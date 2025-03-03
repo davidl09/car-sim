@@ -1,16 +1,17 @@
 import { Canvas } from '@react-three/fiber';
-import { KeyboardControls, Sky, Stats, Environment } from '@react-three/drei';
+import { KeyboardControls, Sky, Stats } from '@react-three/drei';
+import * as THREE from 'three';
 import { Suspense, useRef } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { WorldRenderer } from './WorldRenderer';
 import { Vehicle } from './Vehicle';
 import { OtherPlayers } from './OtherPlayers';
 import { LoadingPlaceholder } from '../ui/LoadingPlaceholder';
-import { Controls } from './Controls';
+// import { Controls } from './Controls';
 import { useGameStore } from '@/store/gameStore';
 
 // Define keyboard controls for the game
-export enum Controls {
+export enum GameControls {
   forward = 'forward',
   back = 'back',
   left = 'left',
@@ -22,24 +23,25 @@ export enum Controls {
 
 // Keyboard mapping
 const keyboardMap = [
-  { name: Controls.forward, keys: ['ArrowUp', 'KeyW'] },
-  { name: Controls.back, keys: ['ArrowDown', 'KeyS'] },
-  { name: Controls.left, keys: ['ArrowLeft', 'KeyA'] },
-  { name: Controls.right, keys: ['ArrowRight', 'KeyD'] },
-  { name: Controls.jump, keys: ['Space'] },
-  { name: Controls.brake, keys: ['ShiftLeft', 'ShiftRight'] },
-  { name: Controls.cameraSwitch, keys: ['KeyC'] }, // Press 'c' to switch camera view
+  { name: GameControls.forward, keys: ['ArrowUp', 'KeyW'] },
+  { name: GameControls.back, keys: ['ArrowDown', 'KeyS'] },
+  { name: GameControls.left, keys: ['ArrowLeft', 'KeyA'] },
+  { name: GameControls.right, keys: ['ArrowRight', 'KeyD'] },
+  { name: GameControls.jump, keys: ['Space'] },
+  { name: GameControls.brake, keys: ['ShiftLeft', 'ShiftRight'] },
+  { name: GameControls.cameraSwitch, keys: ['KeyC'] }, // Press 'c' to switch camera view
 ];
 
 // Component to make the environment follow the player
 function EnvironmentFollower() {
   const playerId = useGameStore((state) => state.playerId);
   const player = useGameStore((state) => playerId ? state.players[playerId] : null);
-  const { scene } = useThree();
+  //const { scene } = useThree();
   
   // Reference to environment elements
-  const skyRef = useRef(null);
-  const directionalLightRef = useRef(null);
+  // Using any for ref types to avoid drei type conflicts
+  const skyRef = useRef<any>(null);
+  const directionalLightRef = useRef<THREE.Object3D | null>(null);
   
   // Update environment position to follow the player
   useFrame(() => {

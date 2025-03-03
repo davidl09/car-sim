@@ -1,14 +1,13 @@
-import { useRef, useEffect, useMemo, useState } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
-import { Vector3, Group, Box3, Object3D } from 'three';
+import { Vector3, Group } from 'three';
 import { socketService } from '@/services/socketService';
 import { audioService } from '@/services/audioService';
 import { collisionService } from '@/services/collisionService';
 import { useGameStore } from '@/store/gameStore';
-import { Controls } from './Game';
 import { Vector3 as PlayerVector3 } from 'shared/types/player';
-import { hasSpawnProtection, SPAWN_PROTECTION_TIME } from '@/utils/collisionUtils';
+import { hasSpawnProtection } from '@/utils/collisionUtils';
 
 // Extend window interface to support the tree data function
 declare global {
@@ -115,10 +114,11 @@ export function Vehicle() {
   const nearbyTrees = useRef<Array<{position: PlayerVector3}>>([]);
   
   // Reference to track if we need to update tree data
-  const lastPlayerChunk = useRef<{x: number, z: number}>({x: 0, z: 0});
+  //const lastPlayerChunk = useRef<{x: number, z: number}>({x: 0, z: 0});
   
   // Move the vehicle based on input
-  useFrame((state, delta) => {
+  //useFrame((state, delta) => {
+  useFrame(() => {
     if (!vehicleRef.current || !playerState || !playerId) return;
     
     // Get current input state
@@ -228,10 +228,10 @@ export function Vehicle() {
     vehicleRef.current.position.add(movement);
     
     // Check current chunk to determine when to update tree data
-    const currentPlayerChunk = {
-      x: Math.floor(vehicleRef.current.position.x / 256),
-      z: Math.floor(vehicleRef.current.position.z / 256)
-    };
+    // const currentPlayerChunk = {
+    //   x: Math.floor(vehicleRef.current.position.x / 256),
+    //   z: Math.floor(vehicleRef.current.position.z / 256)
+    // };
     
     // Check for player-vehicle collisions and get collision response vector
     const vehicleCollisionResponse = collisionService.checkVehicleCollisions(playerId);

@@ -1,4 +1,4 @@
-import { Player, PlayerUpdate } from './player';
+import { Player } from './player';
 
 // Client to Server events
 export enum ClientEvents {

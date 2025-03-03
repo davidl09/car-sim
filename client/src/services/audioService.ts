@@ -4,7 +4,6 @@ import { webAudioService } from './webAudioService';
 class AudioService {
   private sounds: Map<string, HTMLAudioElement> = new Map();
   private engineRunning: boolean = false;
-  private currentSpeed: number = 0;
   private engineVolume: number = 0.5; // Default volume
   private pendingAutoplayRequest: boolean = false;
   private userInteracted: boolean = false;
@@ -70,9 +69,7 @@ class AudioService {
   
   // Update engine sound based on speed
   public updateEngineSound(speed: number): void {
-    // Store speed even if engine isn't running yet
-    this.currentSpeed = speed;
-    
+    // Skip if engine isn't running
     if (!this.engineRunning) return;
     
     // Use the more efficient WebAudioService for sound updating

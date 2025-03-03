@@ -46,8 +46,8 @@ export function calculatePenetrationVector(player1: Player, player2: Player): Ve
   const direction = new Vector3().subVectors(pos1, pos2).normalize();
   
   // Calculate centers of each vehicle for better collision response
-  const center1 = pos1.clone();
-  const center2 = pos2.clone();
+  // const center1 = pos1.clone();
+  // const center2 = pos2.clone();
   
   // Calculate approximate penetration depth based on distance
   const distance = pos1.distanceTo(pos2);

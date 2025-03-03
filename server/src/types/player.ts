@@ -12,4 +12,6 @@ export interface Player {
   velocity: Vector3;
   color: string;
   lastUpdate: number;
+  health: number;
+  joinTime: number;
 }

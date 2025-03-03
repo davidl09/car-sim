@@ -31,13 +31,23 @@ class WebAudioService {
   }
 
   public async loadEngineSound(): Promise<void> {
-    if (!this.audioContext || this.loadPromise) return this.loadPromise;
+    if (!this.audioContext) {
+      console.warn('Audio context not available');
+      return Promise.resolve();
+    }
     
-    this.loadPromise = new Promise(async (resolve, reject) => {
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+    
+    this.loadPromise = new Promise(async (resolve, /*reject*/) => {
       try {
         // Create empty buffer for now (in case file not available)
-        const sampleRate = this.audioContext.sampleRate;
-        const emptyBuffer = this.audioContext.createBuffer(2, sampleRate * 2, sampleRate);
+        // We know audioContext exists here because we checked at the beginning
+        console.log('Creating audio buffer with sample rate:', this.audioContext!.sampleRate);
+        
+        const sampleRate = this.audioContext!.sampleRate;
+        const emptyBuffer = this.audioContext!.createBuffer(2, sampleRate * 2, sampleRate);
         this.engineBuffer = emptyBuffer;
         
         // Try to load actual sound file
@@ -50,7 +60,9 @@ class WebAudioService {
         }
         
         const arrayBuffer = await response.arrayBuffer();
-        this.engineBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+        // We know audioContext exists here because we checked at the beginning
+        this.engineBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
+        console.log('Successfully decoded audio data, buffer length:', this.engineBuffer.length);
         this.isInitialized = true;
         resolve();
       } catch (error) {
@@ -64,9 +76,13 @@ class WebAudioService {
   }
   
   private createSyntheticEngineSound(): void {
-    if (!this.audioContext) return;
+    if (!this.audioContext) {
+      console.warn('Cannot create synthetic sound, audio context is null');
+      return;
+    }
     
     // Create a synthetic engine sound as a backup
+    console.log('Creating synthetic engine sound');
     const sampleRate = this.audioContext.sampleRate;
     const buffer = this.audioContext.createBuffer(2, sampleRate * 2, sampleRate);
     
@@ -94,7 +110,17 @@ class WebAudioService {
   }
   
   private startEngineSound(): void {
-    if (!this.audioContext || !this.engineBuffer || this.isPlaying) return;
+    console.log('Starting engine sound with state:', {
+      hasContext: !!this.audioContext,
+      hasBuffer: !!this.engineBuffer,
+      isInitialized: this.isInitialized,
+      isPlaying: this.isPlaying
+    });
+    
+    if (!this.audioContext || !this.engineBuffer || this.isPlaying) {
+      console.warn('Cannot start engine sound, prerequisites not met');
+      return;
+    }
     
     try {
       // Need to resume AudioContext on user interaction
@@ -135,6 +161,16 @@ class WebAudioService {
   public updateEngineSound(speed: number): void {
     if (!this.isPlaying || !this.audioContext || !this.engineNode || !this.gainNode) {
       this.currentSpeed = speed;
+      // Only log once in a while to avoid console spam
+      if (Math.random() < 0.01) {
+        console.log('Engine sound update skipped, state:', {
+          isPlaying: this.isPlaying,
+          hasContext: !!this.audioContext,
+          hasNode: !!this.engineNode,
+          hasGain: !!this.gainNode,
+          speed: speed
+        });
+      }
       return;
     }
     

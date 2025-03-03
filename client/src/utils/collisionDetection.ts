@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Building, Road, Tree } from 'shared/types/world';
+import { Building, Tree } from 'shared/types/world';
 import { Player } from 'shared/types/player';
 
 /**

@@ -1,5 +1,5 @@
-import { useRef, useMemo, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useMemo, useEffect } from 'react';
+//import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { Building, Road, Tree } from 'shared/types/world';
@@ -10,7 +10,7 @@ const CHUNK_SIZE = 256;
 const VISIBLE_CHUNKS = 3; // Number of chunks visible in each direction
 
 export function WorldRenderer() {
-  const { camera } = useThree();
+  //const { camera } = useThree();
   const worldSeed = useGameStore((state) => state.worldSeed);
   const playerId = useGameStore((state) => state.playerId);
   const playerPosition = useGameStore((state) => 
@@ -18,7 +18,7 @@ export function WorldRenderer() {
   );
 
   // Track loaded chunks
-  const loadedChunks = useRef<Record<string, boolean>>({});
+  //const loadedChunks = useRef<Record<string, boolean>>({});
   
   // Generate pseudo-random number using seed
   const seededRandom = (x: number, z: number) => {

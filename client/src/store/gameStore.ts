@@ -29,7 +29,7 @@ export const useGameStore = create<GameState>((set) => ({
   
   setWorldSeed: (seed) => set({ worldSeed: seed }),
   
-  setPlayers: (players) => set((state) => {
+  setPlayers: (players) => set((/* state */) => {
     const playersMap: Record<string, Player> = {};
     players.forEach(player => {
       playersMap[player.id] = player;

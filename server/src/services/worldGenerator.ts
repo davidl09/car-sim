@@ -1,4 +1,4 @@
-import { Chunk } from '../types/world';
+import { Chunk, Building, Tree, Road } from '../types/world';
 
 export class WorldGenerator {
   private seed: number;
@@ -72,7 +72,7 @@ export class WorldGenerator {
     return terrainHeight;
   }
 
-  private generateBuildings(chunkX: number, chunkZ: number, random: () => number): any[] {
+  private generateBuildings(chunkX: number, chunkZ: number, random: () => number): Building[] {
     // Simple building generation
     const buildings = [];
     const buildingCount = Math.floor(random() * 20) + 10; // 10 to 30 buildings
@@ -96,7 +96,7 @@ export class WorldGenerator {
     return buildings;
   }
 
-  private generateTrees(chunkX: number, chunkZ: number, random: () => number): any[] {
+  private generateTrees(chunkX: number, chunkZ: number, random: () => number): Tree[] {
     // Simple tree generation
     const trees = [];
     const treeCount = Math.floor(random() * 50) + 20; // 20 to 70 trees
@@ -118,7 +118,7 @@ export class WorldGenerator {
     return trees;
   }
 
-  private generateRoads(chunkX: number, chunkZ: number, isCity: boolean): any[] {
+  private generateRoads(chunkX: number, chunkZ: number, isCity: boolean): Road[] {
     // Simple road generation
     const roads = [];
     
