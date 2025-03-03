@@ -72,12 +72,43 @@ export const setupSocketHandlers = (io: Server): void => {
     // Handle player name update
     socket.on('player:setname', (data) => {
       const { name } = data;
-      console.log(`Player ${socket.id} set name to: ${name}`);
-      playerManager.updatePlayer(socket.id, { name });
-      io.emit('player:nameupdated', {
-        playerId: socket.id,
-        name,
-      });
+      console.log(`Player ${socket.id} requested name: ${name}`);
+      
+      // Update the player with the requested name (PlayerManager ensures uniqueness)
+      const updatedPlayer = playerManager.updatePlayer(socket.id, { name });
+      
+      if (updatedPlayer) {
+        // The name might be different from the requested one if there was a conflict
+        console.log(`Player ${socket.id} assigned name: ${updatedPlayer.name}`);
+        
+        // Broadcast the updated name to all clients
+        io.emit('player:nameupdated', {
+          playerId: socket.id,
+          name: updatedPlayer.name, // Use the actual assigned name
+        });
+      }
+    });
+    
+    // Handle player respawn request
+    socket.on('player:respawn', () => {
+      console.log(`Player ${socket.id} requested respawn`);
+      
+      // Respawn the player with random position and full health
+      const respawnedPlayer = playerManager.respawnPlayer(socket.id);
+      
+      if (respawnedPlayer) {
+        console.log(`Player ${socket.id} respawned at position:`, respawnedPlayer.position);
+        
+        // Broadcast the respawn to all clients (including the respawned player)
+        io.emit('player:respawned', {
+          playerId: socket.id,
+          position: respawnedPlayer.position,
+          rotation: respawnedPlayer.rotation,
+          velocity: respawnedPlayer.velocity,
+          health: respawnedPlayer.health,
+          joinTime: respawnedPlayer.joinTime
+        });
+      }
     });
     
     // Handle disconnection

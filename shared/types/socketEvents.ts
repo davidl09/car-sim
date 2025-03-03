@@ -5,6 +5,7 @@ export enum ClientEvents {
   PLAYER_UPDATE = 'player:update',
   PLAYER_CUSTOMIZE = 'player:customize',
   PLAYER_SET_NAME = 'player:setname',
+  PLAYER_RESPAWN = 'player:respawn',
 }
 
 // Server to Client events
@@ -15,6 +16,7 @@ export enum ServerEvents {
   PLAYER_LEFT = 'player:left',
   PLAYER_CUSTOMIZED = 'player:customized',
   PLAYER_NAME_UPDATED = 'player:nameupdated',
+  PLAYER_RESPAWNED = 'player:respawned',
 }
 
 // Event payload types
@@ -41,4 +43,13 @@ export interface PlayerCustomizedPayload {
 export interface PlayerNameUpdatePayload {
   playerId: string;
   name: string;
+}
+
+export interface PlayerRespawnPayload {
+  playerId: string;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+  health: number;
+  joinTime: number;
 }

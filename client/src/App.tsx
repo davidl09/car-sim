@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { Game } from '@/components/game/Game';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ColorPicker } from '@/components/ui/ColorPicker';
-import { SpeedIndicator } from '@/components/ui/SpeedIndicator';
+import { SpeedDial } from '@/components/ui/SpeedDial';
+import { HealthBar } from '@/components/ui/HealthBar';
 import { NamePrompt } from '@/components/ui/NamePrompt';
+import { SoundSettings } from '@/components/ui/SoundSettings';
+import { AudioButton } from '@/components/ui/AudioButton';
+import { Minimap } from '@/components/ui/Minimap';
 import { useGameStore } from '@/store/gameStore';
 import { socketService } from '@/services/socketService';
 import '@/styles/App.css';
@@ -41,12 +45,20 @@ function App() {
     <div className="app-container">
       <Game />
       <div className="ui-container">
-        <ColorPicker 
-          onColorSelect={(color) => socketService.customizePlayer(color)} 
-        />
-        <SpeedIndicator />
+        <div className="top-controls">
+          <div className="control-stack">
+            <ColorPicker 
+              onColorSelect={(color) => socketService.customizePlayer(color)} 
+            />
+            <SoundSettings />
+          </div>
+        </div>
+        <SpeedDial />
+        <HealthBar />
+        <Minimap />
       </div>
       <NamePrompt />
+      <AudioButton />
     </div>
   );
 }

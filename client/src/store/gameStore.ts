@@ -13,6 +13,10 @@ interface GameState {
   updatePlayer: (id: string, updates: Partial<Player>) => void;
   removePlayer: (id: string) => void;
   setConnectionStatus: (status: boolean) => void;
+  
+  // Health-related actions
+  damagePlayer: (id: string, amount: number) => void;
+  resetHealth: (id: string) => void;
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -49,7 +53,9 @@ export const useGameStore = create<GameState>((set) => ({
             rotation: { x: 0, y: 0, z: 0 },
             velocity: { x: 0, y: 0, z: 0 },
             color: '#FF5252',
+            health: 100,
             lastUpdate: Date.now(),
+            joinTime: Date.now(), // Initialize join time for spawn protection
             ...updates, // Apply the updates on top of the defaults
           }
         }
@@ -76,4 +82,46 @@ export const useGameStore = create<GameState>((set) => ({
   }),
   
   setConnectionStatus: (status) => set({ isConnected: status }),
+  
+  // Apply damage to a player
+  damagePlayer: (id, amount) => set((state) => {
+    const player = state.players[id];
+    if (!player) return state;
+    
+    // Ensure health is a valid number, defaulting to 100 if it's NaN
+    const currentHealth = isNaN(player.health) ? 100 : player.health;
+    
+    // Calculate new health, ensuring it doesn't go below 0
+    const newHealth = Math.max(0, currentHealth - amount);
+    
+    // Set the last collision time
+    const lastCollision = Date.now();
+    
+    return {
+      players: {
+        ...state.players,
+        [id]: {
+          ...player,
+          health: newHealth,
+          lastCollision
+        }
+      }
+    };
+  }),
+  
+  // Reset a player's health to 100%
+  resetHealth: (id) => set((state) => {
+    const player = state.players[id];
+    if (!player) return state;
+    
+    return {
+      players: {
+        ...state.players,
+        [id]: {
+          ...player,
+          health: 100
+        }
+      }
+    };
+  }),
 }));

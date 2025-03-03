@@ -23,10 +23,9 @@ export function NamePrompt() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (name.trim().length > 0) {
-      socketService.setPlayerName(name.trim());
-      setIsVisible(false);
-    }
+    // Send name to server even if empty - server will generate a random name
+    socketService.setPlayerName(name.trim());
+    setIsVisible(false);
   };
   
   if (!isVisible) {
@@ -42,7 +41,7 @@ export function NamePrompt() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
+            placeholder="Leave empty for random name"
             maxLength={15}
             autoFocus
             className={styles.nameInput}

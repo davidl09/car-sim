@@ -1,18 +1,38 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useKeyboardControls } from '@react-three/drei';
-import { Vector3, Group, Box3 } from 'three';
+import { Vector3, Group, Box3, Object3D } from 'three';
 import { socketService } from '@/services/socketService';
+import { audioService } from '@/services/audioService';
+import { collisionService } from '@/services/collisionService';
 import { useGameStore } from '@/store/gameStore';
 import { Controls } from './Game';
 import { Vector3 as PlayerVector3 } from 'shared/types/player';
+import { hasSpawnProtection, SPAWN_PROTECTION_TIME } from '@/utils/collisionUtils';
+
+// Extend window interface to support the tree data function
+declare global {
+  interface Window {
+    updateNearbyTrees?: (trees: Array<{position: PlayerVector3}>) => void;
+  }
+}
 
 // Constants for vehicle physics
-const ACCELERATION = 0.01;
-const MAX_VELOCITY = 0.5;
-const FRICTION = 0.98;
-const TURN_SPEED = 0.02;
+const BASE_ACCELERATION = 0.008; // Increased base acceleration
+const MAX_VELOCITY = 1.0; // Max velocity (200km/h)
+const MIN_FRICTION = 0.997; // Even less friction at low speeds (0.3% loss)
+const MAX_FRICTION = 0.996; // Less friction at high speeds (0.4% loss)
+const BRAKE_POWER = 0.92; // Brake strength (8% reduction per frame)
+const BASE_TURN_SPEED = 0.03; // Increased base turning speed 
+const MIN_TURN_MULTIPLIER = 0.25; // Minimum turning multiplier at high speeds
 const UPDATE_INTERVAL = 50; // How often to send updates (in ms)
+
+// Camera view types
+enum CameraView {
+  REAR = 'rear',   // Default third-person behind the car
+  FRONT = 'front', // Third-person in front of car
+  FIRST_PERSON = 'first_person' // First-person from driver's perspective
+}
 
 export function Vehicle() {
   const vehicleRef = useRef<Group>(null);
@@ -29,12 +49,77 @@ export function Vehicle() {
   const velocity = useRef<Vector3>(new Vector3(0, 0, 0));
   const lastUpdateRef = useRef<number>(0);
   
-  // Get keyboard controls
+  // Track camera view state
+  const cameraViewRef = useRef<CameraView>(CameraView.REAR); // Default to rear view
+  const cameraSwitchCooldown = useRef<boolean>(false); // Prevent rapid switching
+  
+  // Track if engine is running
+  const engineRunningRef = useRef<boolean>(false);
+  
+  // Get keyboard controls and subscribe to camera switch
   const [subscribeKeys, getKeys] = useKeyboardControls();
+  
+  // We'll handle billboard effect in the main useFrame loop instead to avoid potential conflicts
+  
+  // Subscribe to camera switch key
+  useEffect(() => {
+    // Handle camera view switching when 'c' is pressed
+    const unsubscribe = subscribeKeys(
+      (state) => state.cameraSwitch,
+      (pressed) => {
+        if (pressed && !cameraSwitchCooldown.current) {
+          // Switch camera view and apply cooldown to prevent rapid switching
+          cameraSwitchCooldown.current = true;
+          
+          // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
+          switch (cameraViewRef.current) {
+            case CameraView.REAR:
+              cameraViewRef.current = CameraView.FRONT;
+              break;
+            case CameraView.FRONT:
+              cameraViewRef.current = CameraView.FIRST_PERSON;
+              break;
+            case CameraView.FIRST_PERSON:
+              cameraViewRef.current = CameraView.REAR;
+              break;
+          }
+          
+          // Reset cooldown after 300ms to prevent accidental double-switches
+          setTimeout(() => {
+            cameraSwitchCooldown.current = false;
+          }, 300);
+        }
+      }
+    );
+    
+    return () => {
+      unsubscribe();
+    };
+  }, [subscribeKeys]);
+  
+  // Setup engine sound management
+  useEffect(() => {
+    // The engine will only start after user interaction
+    // We still call startEngine but it will wait for user interaction internally
+    audioService.startEngine();
+    engineRunningRef.current = true;
+    
+    // Stop engine sound when component unmounts
+    return () => {
+      audioService.stopEngine();
+      engineRunningRef.current = false;
+    };
+  }, []);
+  
+  // Extract trees from visible chunks for collision detection
+  const nearbyTrees = useRef<Array<{position: PlayerVector3}>>([]);
+  
+  // Reference to track if we need to update tree data
+  const lastPlayerChunk = useRef<{x: number, z: number}>({x: 0, z: 0});
   
   // Move the vehicle based on input
   useFrame((state, delta) => {
-    if (!vehicleRef.current || !playerState) return;
+    if (!vehicleRef.current || !playerState || !playerId) return;
     
     // Get current input state
     const { 
@@ -45,16 +130,37 @@ export function Vehicle() {
       brake
     } = getKeys();
     
-    // Apply acceleration - corrected direction (forward is positive Z)
-    if (forward) {
-      velocity.current.z += ACCELERATION;
-    } else if (back) {
-      velocity.current.z -= ACCELERATION;
-    }
-    
     // Calculate speed (magnitude of velocity)
     const currentSpeed = velocity.current.length();
+    const speedRatio = Math.min(currentSpeed / MAX_VELOCITY, 1); // Value between 0-1
+    
+    // Calculate variable acceleration based on current speed
+    // High acceleration at low speeds with a slower taper
+    // This creates a more realistic power curve with more power at medium-high speeds
+    const accelerationFactor = 1 - (speedRatio * speedRatio * 0.5); // More gradual taper using quadratic curve
+    const currentAcceleration = BASE_ACCELERATION * accelerationFactor;
+    
+    // Apply acceleration - corrected direction (forward is positive Z)
+    if (forward) {
+      velocity.current.z += currentAcceleration;
+    } else if (back) {
+      velocity.current.z -= currentAcceleration * 0.7; // Slightly less power in reverse
+    }
+    
+    // Check if vehicle is moving (reuse the already calculated currentSpeed)
     const isMoving = currentSpeed > 0.01; // Threshold to determine if the vehicle is moving
+    
+    // Get absolute speed value for engine sound (regardless of direction)
+    // This makes the engine respond to the car's actual speed rather than just forward motion
+    const absoluteSpeed = Math.abs(velocity.current.length());
+    
+    // Update engine sound based on speed (convert to km/h for audio service)
+    // Using our known maximum speed of roughly 200km/h (MAX_VELOCITY * 200)
+    const speedKmh = absoluteSpeed * 200; // Convert to km/h to match our new max speed
+    
+    // Update the engine sound on every frame to ensure it's always on
+    // The audioService has performance optimizations to handle frequent calls
+    audioService.updateEngineSound(speedKmh);
     
     // Apply turning - only allow turning when the vehicle is moving
     if (isMoving) {
@@ -62,23 +168,30 @@ export function Vehicle() {
       const isReversing = velocity.current.z < 0;
       const steeringFactor = isReversing ? -1 : 1; // Invert steering direction when reversing
       
-      // Calculate enhanced steering at low speeds (tighter turning radius)
-      // This formula provides increased steering capability at low speeds while
-      // maintaining normal steering at higher speeds
+      // Calculate enhanced steering with more extreme variation between low and high speeds
+      // Much tighter turning at low speeds, and significantly reduced at high speeds
       const speedRatio = currentSpeed / MAX_VELOCITY;
-      const steeringMultiplier = 0.4 + (0.6 * speedRatio); // Range from 0.4 to 1.0
-      const enhancedSteering = TURN_SPEED * (1 / steeringMultiplier);
+      
+      // Exponential curve gives much sharper turning at low speeds
+      // This creates a 1.0 to MIN_TURN_MULTIPLIER curve with exponential falloff
+      const turnMultiplier = MIN_TURN_MULTIPLIER + (1 - MIN_TURN_MULTIPLIER) * Math.pow(1 - speedRatio, 2);
+      
+      // Apply the base turn speed with our custom multiplier
+      const effectiveTurnSpeed = BASE_TURN_SPEED * turnMultiplier;
+      
+      // Scale turn amount by speed to prevent the car from rotating when stationary
+      const turnAmount = effectiveTurnSpeed * Math.min(0.2 + speedRatio * 0.8, 1.0);
       
       if (left) {
-        vehicleRef.current.rotation.y += steeringFactor * enhancedSteering * speedRatio;
+        vehicleRef.current.rotation.y += steeringFactor * turnAmount;
       } else if (right) {
-        vehicleRef.current.rotation.y -= steeringFactor * enhancedSteering * speedRatio;
+        vehicleRef.current.rotation.y -= steeringFactor * turnAmount;
       }
     }
     
-    // Apply braking
+    // Apply braking - stronger than before
     if (brake) {
-      velocity.current.multiplyScalar(0.9);
+      velocity.current.multiplyScalar(BRAKE_POWER);
     }
     
     // Limit velocity
@@ -86,8 +199,24 @@ export function Vehicle() {
       velocity.current.normalize().multiplyScalar(MAX_VELOCITY);
     }
     
-    // Apply friction
-    velocity.current.multiplyScalar(FRICTION);
+    // Apply variable friction based on speed
+    // Custom friction curve that allows reaching top speed
+    // Start with very little friction, gradually increase with speed, but cap the max friction
+    // This uses a custom curve to ensure we can reach max speed
+    let frictionFactor;
+    
+    if (speedRatio < 0.85) {
+      // Lower friction at most speeds
+      frictionFactor = MIN_FRICTION - (speedRatio * 0.7 * (MIN_FRICTION - MAX_FRICTION));
+    } else {
+      // Even at top speeds, limit friction to allow maintaining max velocity
+      frictionFactor = MAX_FRICTION;
+    }
+    
+    // Debug: Uncomment to monitor top speed
+    // if (speedKmh > 190) console.log(`Speed: ${speedKmh.toFixed(1)} km/h, Friction: ${frictionFactor}`);
+    
+    velocity.current.multiplyScalar(frictionFactor);
     
     // Apply velocity to vehicle position
     const movement = velocity.current.clone();
@@ -98,20 +227,100 @@ export function Vehicle() {
     // Update vehicle position
     vehicleRef.current.position.add(movement);
     
-    // Update camera position - position camera behind the vehicle
-    const cameraOffset = new Vector3(0, 5, -10); // Position camera behind the vehicle
-    cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
-    camera.position.lerp(
-      new Vector3(
-        vehicleRef.current.position.x + cameraOffset.x,
-        vehicleRef.current.position.y + cameraOffset.y,
-        vehicleRef.current.position.z + cameraOffset.z
-      ),
-      0.1
+    // Check current chunk to determine when to update tree data
+    const currentPlayerChunk = {
+      x: Math.floor(vehicleRef.current.position.x / 256),
+      z: Math.floor(vehicleRef.current.position.z / 256)
+    };
+    
+    // Check for player-vehicle collisions and get collision response vector
+    const vehicleCollisionResponse = collisionService.checkVehicleCollisions(playerId);
+    
+    // Check for tree collisions and get collision response vector
+    const treeCollisionResponse = collisionService.checkTreeCollisions(
+      playerId,
+      vehicleRef.current.position,
+      nearbyTrees.current
     );
     
-    // Point camera at vehicle
-    camera.lookAt(vehicleRef.current.position);
+    // Apply collision response to prevent vehicles from passing through each other
+    if (vehicleCollisionResponse) {
+      // Update position
+      vehicleRef.current.position.add(vehicleCollisionResponse);
+      
+      // Reduce vehicle speed significantly on collision - lose 80% of speed
+      const SPEED_REDUCTION_FACTOR = 0.2; // Keep only 20% of current speed
+      velocity.current.multiplyScalar(SPEED_REDUCTION_FACTOR);
+      
+      // Add a small bounce in the direction of the collision response
+      const bounceVector = vehicleCollisionResponse.clone().normalize().multiplyScalar(0.05);
+      velocity.current.add(bounceVector);
+    }
+    
+    // Apply tree collision response
+    if (treeCollisionResponse) {
+      // Update position
+      vehicleRef.current.position.add(treeCollisionResponse);
+      
+      // Trees should stop vehicles almost completely - lose 95% of speed
+      const TREE_SPEED_REDUCTION_FACTOR = 0.05; // Keep only 5% of current speed
+      velocity.current.multiplyScalar(TREE_SPEED_REDUCTION_FACTOR);
+      
+      // Add a small bounce in the direction of the collision response
+      const bounceVector = treeCollisionResponse.clone().normalize().multiplyScalar(0.03);
+      velocity.current.add(bounceVector);
+    }
+    
+    // Update camera position based on the current view mode
+    let cameraOffset: Vector3;
+    let lookAtPosition: Vector3;
+    let lerpSpeed = 0.1; // Default smooth transition speed
+    
+    // Calculate camera position and target based on the view mode
+    switch (cameraViewRef.current) {
+      case CameraView.REAR: // Default third-person view from behind
+        cameraOffset = new Vector3(0, 5, -10); // Behind and above
+        lookAtPosition = vehicleRef.current.position.clone(); // Look at vehicle
+        break;
+        
+      case CameraView.FRONT: // Third-person view from front
+        cameraOffset = new Vector3(0, 5, 10); // In front and above
+        lookAtPosition = vehicleRef.current.position.clone(); // Look at vehicle
+        break;
+        
+      case CameraView.FIRST_PERSON: // First-person driver view
+        // Position at driver's eye level, slightly offset from center
+        cameraOffset = new Vector3(0.5, 2.2, 0); // Right side (driver position), eye level
+        lerpSpeed = 0.2; // Faster transition for first-person
+        
+        // Look in the direction the car is facing (10 units ahead)
+        const forwardDir = new Vector3(0, 1.8, 10); // Look ahead and slightly down
+        
+        // Apply car's rotation to both offset and look-direction
+        cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+        forwardDir.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+        
+        lookAtPosition = vehicleRef.current.position.clone().add(forwardDir);
+        break;
+    }
+    
+    // Apply the car's rotation to camera offset (except for first-person which already did this)
+    if (cameraViewRef.current !== CameraView.FIRST_PERSON) {
+      cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+    }
+    
+    // Apply the calculated offset to the vehicle position
+    const targetPosition = new Vector3(
+      vehicleRef.current.position.x + cameraOffset.x,
+      vehicleRef.current.position.y + cameraOffset.y,
+      vehicleRef.current.position.z + cameraOffset.z
+    );
+    
+    // Smoothly transition camera to target position
+    camera.position.lerp(targetPosition, lerpSpeed);
+    
+    // Point camera at the appropriate position
+    camera.lookAt(lookAtPosition);
     
     // Send position updates to server
     const now = Date.now();
@@ -170,8 +379,54 @@ export function Vehicle() {
     }
   }, [playerState]);
   
+  // This effect registers a global function to update nearby trees for collision detection
+  useEffect(() => {
+    // Register a global function to update tree data
+    window.updateNearbyTrees = (trees: Array<{position: PlayerVector3}>) => {
+      nearbyTrees.current = trees;
+    };
+    
+    return () => {
+      // Clean up when component unmounts
+      delete window.updateNearbyTrees;
+    };
+  }, []);
+  
+  // Check if player has spawn protection
+  const hasProtection = playerState && hasSpawnProtection(playerState);
+  
+  // Use refs instead of state for shield effects to avoid potential render issues
+  const shieldOpacity = useRef(0.2);
+  const shieldScale = useRef(1.0);
+  
+  // Add pulse effect to shield when spawn protection is active
+  useEffect(() => {
+    if (!hasProtection) return;
+    
+    const pulseInterval = setInterval(() => {
+      shieldOpacity.current = 0.1 + Math.sin(Date.now() * 0.005) * 0.1;
+      shieldScale.current = 1.0 + Math.sin(Date.now() * 0.003) * 0.1;
+    }, 50);
+    
+    return () => clearInterval(pulseInterval);
+  }, [hasProtection]);
+  
   return (
     <group ref={vehicleRef}>
+      {/* Spawn protection shield - simplified for now */}
+      {hasProtection && (
+        <mesh position={[0, 1, 0]}>
+          <sphereGeometry args={[2.5, 16, 16]} />
+          <meshStandardMaterial 
+            transparent={true} 
+            opacity={0.3} 
+            color="#00bfff" 
+            emissive="#00bfff"
+            emissiveIntensity={0.5}
+          />
+        </mesh>
+      )}
+      
       {/* Main car body */}
       <mesh castShadow receiveShadow position={[0, 0.6, 0]}>
         <boxGeometry args={[2, 1, 4]} />
@@ -189,6 +444,26 @@ export function Vehicle() {
       <Wheel position={[-1, 0, 1]} />
       <Wheel position={[1, 0, -1]} />
       <Wheel position={[-1, 0, -1]} />
+      
+      {/* Headlights */}
+      <mesh position={[0.6, 0.6, 2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffcc" emissiveIntensity={1} />
+      </mesh>
+      <mesh position={[-0.6, 0.6, 2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffcc" emissiveIntensity={1} />
+      </mesh>
+      
+      {/* Taillights */}
+      <mesh position={[0.6, 0.6, -2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.8} />
+      </mesh>
+      <mesh position={[-0.6, 0.6, -2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.8} />
+      </mesh>
     </group>
   );
 }

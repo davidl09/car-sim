@@ -90,6 +90,26 @@ function OtherVehicle({ player }: OtherVehicleProps) {
       <Wheel position={[1, 0, -1]} />
       <Wheel position={[-1, 0, -1]} />
       
+      {/* Headlights */}
+      <mesh position={[0.6, 0.6, 2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffcc" emissiveIntensity={1} />
+      </mesh>
+      <mesh position={[-0.6, 0.6, 2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ffffff" emissive="#ffffcc" emissiveIntensity={1} />
+      </mesh>
+      
+      {/* Taillights */}
+      <mesh position={[0.6, 0.6, -2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.8} />
+      </mesh>
+      <mesh position={[-0.6, 0.6, -2]} scale={[0.3, 0.3, 0.1]}>
+        <boxGeometry />
+        <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={0.8} />
+      </mesh>
+      
       {/* Player Name Tag */}
       <group ref={nameTagRef} position={[0, 2.2, 0]}>
         <Text

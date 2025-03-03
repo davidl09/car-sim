@@ -12,6 +12,9 @@ export interface Player {
   velocity: Vector3;
   color: string;
   lastUpdate: number;
+  health: number;
+  lastCollision?: number;
+  joinTime: number; // When the player joined, used for spawn protection
 }
 
 export interface PlayerUpdate {
@@ -19,5 +22,8 @@ export interface PlayerUpdate {
   rotation?: Vector3;
   velocity?: Vector3;
   color?: string;
+  health?: number;
+  lastCollision?: number;
   name?: string;
+  joinTime?: number;
 }

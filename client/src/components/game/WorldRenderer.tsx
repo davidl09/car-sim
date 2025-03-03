@@ -1,8 +1,9 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGameStore } from '@/store/gameStore';
 import { Building, Road, Tree } from 'shared/types/world';
+import { Vector3 as PlayerVector3 } from 'shared/types/player';
 
 // Constants for world generation
 const CHUNK_SIZE = 256;
@@ -82,21 +83,33 @@ interface ChunkProps {
 }
 
 function Chunk({ x, z, seededRandom }: ChunkProps) {
-  // Determine if this chunk is a city or countryside
-  // Use Manhattan distance from origin for alternating pattern
-  const isCity = (Math.abs(x) + Math.abs(z)) % 2 === 0;
+  // Determine if this chunk is a city, suburb, or countryside
+  // Use a different pattern to create more varied terrain
+  // 1 in 4 chunks are cities, 1 in 4 are suburbs, and 2 in 4 are countryside
+  const terrainRandom = seededRandom(x * 5000, z * 5000);
+  const terrainType = terrainRandom < 0.25 ? 'city' : terrainRandom < 0.5 ? 'suburb' : 'country';
+  const isCity = terrainType === 'city';
+  const isSuburb = terrainType === 'suburb';
   
   // Generate buildings, trees, and roads based on chunk type
   const buildings = useMemo(() => {
-    if (!isCity) return [];
+    if (!isCity && !isSuburb) return [];
     
     const buildings: Building[] = [];
-    const buildingCount = Math.floor(seededRandom(x * 1000, z * 1000) * 20) + 10;
+    // Significantly reduce building count in cities and make suburbs even less dense
+    const buildingCount = isCity 
+      ? Math.floor(seededRandom(x * 1000, z * 1000) * 10) + 5 // Reduced from 20+10 to 10+5
+      : Math.floor(seededRandom(x * 1000, z * 1000) * 5) + 3; // Even fewer buildings in suburbs
     
     for (let i = 0; i < buildingCount; i++) {
       const bx = (seededRandom(x * 1000 + i, z * 1000) * CHUNK_SIZE) + (x * CHUNK_SIZE);
       const bz = (seededRandom(x * 1000, z * 1000 + i) * CHUNK_SIZE) + (z * CHUNK_SIZE);
-      const height = Math.floor(seededRandom(bx, bz) * 5) + 1;
+      
+      // Height varies by area type
+      const height = isCity
+        ? Math.floor(seededRandom(bx, bz) * 6) + 2 // Taller buildings in cities
+        : Math.floor(seededRandom(bx, bz) * 2) + 1; // Lower buildings in suburbs
+      
       const width = Math.floor(seededRandom(bx + 1, bz) * 5) + 3;
       const depth = Math.floor(seededRandom(bx, bz + 1) * 5) + 3;
       
@@ -113,10 +126,14 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
   }, [x, z, isCity, seededRandom]);
   
   const trees = useMemo(() => {
+    // No trees in cities, fewer in suburbs
     if (isCity) return [];
     
     const trees: Tree[] = [];
-    const treeCount = Math.floor(seededRandom(x * 2000, z * 2000) * 50) + 20;
+    // Vary tree count by terrain type - fewer in suburbs, more in countryside
+    const treeCount = isSuburb
+      ? Math.floor(seededRandom(x * 2000, z * 2000) * 20) + 10 // Fewer trees in suburbs
+      : Math.floor(seededRandom(x * 2000, z * 2000) * 40) + 15; // Slightly fewer trees in countryside too
     
     for (let i = 0; i < treeCount; i++) {
       const tx = (seededRandom(x * 2000 + i, z * 2000) * CHUNK_SIZE) + (x * CHUNK_SIZE);
@@ -139,14 +156,14 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     const roads: Road[] = [];
     
     if (isCity) {
-      // City roads in a grid pattern
-      for (let i = 0; i < CHUNK_SIZE; i += 32) {
+      // City roads in a denser grid pattern
+      for (let i = 0; i < CHUNK_SIZE; i += 32) { // Keep grid density the same
         roads.push({
           x1: x * CHUNK_SIZE,
           z1: z * CHUNK_SIZE + i,
           x2: x * CHUNK_SIZE + CHUNK_SIZE,
           z2: z * CHUNK_SIZE + i,
-          width: 8
+          width: 10 // Slightly wider roads
         });
         
         roads.push({
@@ -154,11 +171,42 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
           z1: z * CHUNK_SIZE,
           x2: x * CHUNK_SIZE + i,
           z2: z * CHUNK_SIZE + CHUNK_SIZE,
-          width: 8
+          width: 10
+        });
+      }
+    } else if (isSuburb) {
+      // Suburb roads - less regular pattern with some curves
+      // Main roads
+      roads.push({
+        x1: x * CHUNK_SIZE,
+        z1: z * CHUNK_SIZE + CHUNK_SIZE / 3,
+        x2: x * CHUNK_SIZE + CHUNK_SIZE,
+        z2: z * CHUNK_SIZE + CHUNK_SIZE / 3,
+        width: 8
+      });
+      
+      roads.push({
+        x1: x * CHUNK_SIZE,
+        z1: z * CHUNK_SIZE + CHUNK_SIZE * 2/3,
+        x2: x * CHUNK_SIZE + CHUNK_SIZE,
+        z2: z * CHUNK_SIZE + CHUNK_SIZE * 2/3,
+        width: 8
+      });
+      
+      // Cross roads at irregular intervals
+      for (let i = 0; i < 3; i++) {
+        const offset = seededRandom(x * 3000 + i, z * 3000) * CHUNK_SIZE * 0.8 + CHUNK_SIZE * 0.1;
+        roads.push({
+          x1: x * CHUNK_SIZE + offset,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + offset,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 7
         });
       }
     } else {
-      // Country road - just one through the middle
+      // Country roads - now more interesting with occasional crossroads
+      // Main road
       roads.push({
         x1: x * CHUNK_SIZE,
         z1: z * CHUNK_SIZE + CHUNK_SIZE / 2,
@@ -166,10 +214,48 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
         z2: z * CHUNK_SIZE + CHUNK_SIZE / 2,
         width: 8
       });
+      
+      // Occasional perpendicular roads in countryside (1 in 3 chance)
+      if (seededRandom(x * 4000, z * 4000) > 0.66) {
+        roads.push({
+          x1: x * CHUNK_SIZE + CHUNK_SIZE / 2,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + CHUNK_SIZE / 2,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 6 // Slightly narrower countryside crossing
+        });
+      }
+      
+      // Very occasional diagonal dirt roads (1 in 5 chance)
+      if (seededRandom(x * 5000, z * 5000) > 0.8) {
+        roads.push({
+          x1: x * CHUNK_SIZE,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + CHUNK_SIZE,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 4 // Narrow dirt road
+        });
+      }
     }
     
     return roads;
   }, [x, z, isCity]);
+  
+  // Share tree data with the Vehicle component for collision detection
+  useEffect(() => {
+    // Check if the update function exists (registered by Vehicle component)
+    if (window.updateNearbyTrees) {
+      const treeData = trees.map(tree => ({
+        position: {
+          x: tree.x,
+          y: 0,
+          z: tree.z
+        } as PlayerVector3
+      }));
+      
+      window.updateNearbyTrees(treeData);
+    }
+  }, [trees]);
   
   return (
     <group>

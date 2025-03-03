@@ -6,7 +6,9 @@ import {
   GameStatePayload, 
   GameUpdatePayload, 
   PlayerJoinedPayload, 
-  PlayerCustomizedPayload 
+  PlayerCustomizedPayload,
+  PlayerNameUpdatePayload,
+  PlayerRespawnPayload
 } from 'shared/types/socketEvents';
 import { PlayerUpdate } from 'shared/types/player';
 
@@ -96,6 +98,19 @@ class SocketService {
       console.log(`[Socket] Player ${playerId} updated name to: ${name}`);
       useGameStore.getState().updatePlayer(playerId, { name });
     });
+    
+    // Player respawn event
+    this.socket.on(ServerEvents.PLAYER_RESPAWNED, (payload: PlayerRespawnPayload) => {
+      const { playerId, position, rotation, velocity, health, joinTime } = payload;
+      console.log(`[Socket] Player ${playerId} respawned at position:`, position);
+      useGameStore.getState().updatePlayer(playerId, { 
+        position, 
+        rotation, 
+        velocity, 
+        health, 
+        joinTime 
+      });
+    });
   }
 
   // Send player position update
@@ -105,6 +120,16 @@ class SocketService {
     }
 
     this.socket.emit(ClientEvents.PLAYER_UPDATE, update);
+  }
+  
+  // Request a respawn (e.g., after death)
+  public requestRespawn(): void {
+    if (!this.socket) {
+      return;
+    }
+    
+    console.log('[Socket] Requesting respawn');
+    this.socket.emit(ClientEvents.PLAYER_RESPAWN);
   }
 
   // Send player customization update
