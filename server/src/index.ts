@@ -39,8 +39,29 @@ app.get('/', (req, res) => {
 // Set up Socket.IO handlers
 setupSocketHandlers(io);
 
+// Parse command line arguments
+const args = process.argv.slice(2);
+const hostArg = args.findIndex(arg => arg === '--host');
+let HOST = 'localhost';
+
+// Check if --host flag is present
+if (hostArg !== -1 && args[hostArg + 1]) {
+  HOST = args[hostArg + 1];
+} else if (args.includes('--host')) {
+  HOST = '0.0.0.0'; // Default to all interfaces if --host is specified without value
+}
+
 // Start the server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+const PORT = parseInt(process.env.PORT || '3000', 10);
+
+// Use the appropriate overload based on the host setting
+if (HOST === '0.0.0.0') {
+  server.listen(PORT, HOST, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is exposed to the local network. Access using your local IP address:${PORT}`);
+  });
+} else {
+  server.listen(PORT, () => {
+    console.log(`Server is running on http://${HOST}:${PORT}`);
+  });
+}
