@@ -13,6 +13,7 @@
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
     "start": "cd server && npm run start",
+    "start:prod": "npm run build && NODE_ENV=production npm run start",
     "lint": "npm run lint:client && npm run lint:server",
     "lint:client": "cd client && npm run lint",
     "lint:server": "cd server && npm run lint",

@@ -11,10 +11,10 @@ import {
   PlayerRespawnPayload
 } from 'shared/types/socketEvents';
 import { PlayerUpdate } from 'shared/types/player';
+import { apiConfig } from '@/config/api';
 
 class SocketService {
   private socket: Socket | null = null;
-  private serverUrl: string = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
 
   // Initialize socket connection
   public connect(): void {
@@ -22,7 +22,7 @@ class SocketService {
       return;
     }
 
-    this.socket = io(this.serverUrl, {
+    this.socket = io(apiConfig.wsUrl, {
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
     });
