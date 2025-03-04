@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useKeyboardControls } from '@react-three/drei';
 import { Vector3, Group } from 'three';
 import { socketService } from '@/services/socketService';
 import { audioService } from '@/services/audioService';
@@ -8,6 +7,7 @@ import { collisionService } from '@/services/collisionService';
 import { useGameStore } from '@/store/gameStore';
 import { Vector3 as PlayerVector3 } from 'shared/types/player';
 import { hasSpawnProtection } from '@/utils/collisionUtils';
+import { useControls } from './Controls';
 
 // Extend window interface to support the tree data function
 declare global {
@@ -56,46 +56,48 @@ export function Vehicle() {
   // Track if engine is running
   const engineRunningRef = useRef<boolean>(false);
   
-  // Get keyboard controls and subscribe to camera switch
-  const [subscribeKeys, getKeys] = useKeyboardControls();
+  // Get controls based on device type
+  const { getControls } = useControls();
   
   // We'll handle billboard effect in the main useFrame loop instead to avoid potential conflicts
   
-  // Subscribe to camera switch key
+  // Handle camera switch based on custom controls
   useEffect(() => {
-    // Handle camera view switching when 'c' is pressed
-    const unsubscribe = subscribeKeys(
-      (state) => state.cameraSwitch,
-      (pressed) => {
-        if (pressed && !cameraSwitchCooldown.current) {
-          // Switch camera view and apply cooldown to prevent rapid switching
-          cameraSwitchCooldown.current = true;
-          
-          // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
-          switch (cameraViewRef.current) {
-            case CameraView.REAR:
-              cameraViewRef.current = CameraView.FRONT;
-              break;
-            case CameraView.FRONT:
-              cameraViewRef.current = CameraView.FIRST_PERSON;
-              break;
-            case CameraView.FIRST_PERSON:
-              cameraViewRef.current = CameraView.REAR;
-              break;
-          }
-          
-          // Reset cooldown after 300ms to prevent accidental double-switches
-          setTimeout(() => {
-            cameraSwitchCooldown.current = false;
-          }, 300);
+    // Check camera switch on each frame
+    const checkCameraSwitch = () => {
+      const { cameraSwitch } = getControls();
+      
+      if (cameraSwitch && !cameraSwitchCooldown.current) {
+        // Switch camera view and apply cooldown to prevent rapid switching
+        cameraSwitchCooldown.current = true;
+        
+        // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
+        switch (cameraViewRef.current) {
+          case CameraView.REAR:
+            cameraViewRef.current = CameraView.FRONT;
+            break;
+          case CameraView.FRONT:
+            cameraViewRef.current = CameraView.FIRST_PERSON;
+            break;
+          case CameraView.FIRST_PERSON:
+            cameraViewRef.current = CameraView.REAR;
+            break;
         }
+        
+        // Reset cooldown after 300ms to prevent accidental double-switches
+        setTimeout(() => {
+          cameraSwitchCooldown.current = false;
+        }, 300);
       }
-    );
+    };
+    
+    // Set up interval to check for camera switch
+    const intervalId = setInterval(checkCameraSwitch, 100);
     
     return () => {
-      unsubscribe();
+      clearInterval(intervalId);
     };
-  }, [subscribeKeys]);
+  }, [getControls]);
   
   // Setup engine sound management
   useEffect(() => {
@@ -122,14 +124,14 @@ export function Vehicle() {
   useFrame(() => {
     if (!vehicleRef.current || !playerState || !playerId) return;
     
-    // Get current input state
+    // Get current input state from our custom controls
     const { 
       forward, 
       back, 
       left, 
       right, 
       brake
-    } = getKeys();
+    } = getControls();
     
     // Calculate speed (magnitude of velocity)
     const currentSpeed = velocity.current.length();
