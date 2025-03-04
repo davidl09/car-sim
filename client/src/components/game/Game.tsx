@@ -1,5 +1,5 @@
 import { Canvas } from '@react-three/fiber';
-import { Sky, Stats } from '@react-three/drei';
+import { KeyboardControls, Sky, Stats } from '@react-three/drei';
 import * as THREE from 'three';
 import { Suspense, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
@@ -7,7 +7,7 @@ import { WorldRenderer } from './WorldRenderer';
 import { Vehicle } from './Vehicle';
 import { OtherPlayers } from './OtherPlayers';
 import { LoadingPlaceholder } from '../ui/LoadingPlaceholder';
-import { Controls } from './Controls';
+// import { Controls } from './Controls';
 import { useGameStore } from '@/store/gameStore';
 
 // Define keyboard controls for the game
@@ -21,7 +21,16 @@ export enum GameControls {
   cameraSwitch = 'cameraSwitch',
 }
 
-// Keyboard mapping is handled by our custom controls now
+// Keyboard mapping
+const keyboardMap = [
+  { name: GameControls.forward, keys: ['ArrowUp', 'KeyW'] },
+  { name: GameControls.back, keys: ['ArrowDown', 'KeyS'] },
+  { name: GameControls.left, keys: ['ArrowLeft', 'KeyA'] },
+  { name: GameControls.right, keys: ['ArrowRight', 'KeyD'] },
+  { name: GameControls.jump, keys: ['Space'] },
+  { name: GameControls.brake, keys: ['ShiftLeft', 'ShiftRight'] },
+  { name: GameControls.cameraSwitch, keys: ['KeyC'] }, // Press 'c' to switch camera view
+];
 
 // Component to make the environment follow the player
 function EnvironmentFollower() {
@@ -74,47 +83,32 @@ function EnvironmentFollower() {
   );
 }
 
-// Main game content component - used by both mobile and desktop
-function GameContent() {
-  return (
-    <>
-      <Stats />
-      <Suspense fallback={<LoadingPlaceholder />}>
-        {/* Environment elements that follow the player */}
-        <EnvironmentFollower />
-        
-        {/* Ambient light for the scene */}
-        <ambientLight intensity={0.8} />
-        
-        {/* World renderer component */}
-        <WorldRenderer />
-        
-        {/* Player's vehicle */}
-        <Vehicle />
-        
-        {/* Other players */}
-        <OtherPlayers />
-        
-        {/* Controls component (renders touch controls on mobile) */}
-        <Controls />
-      </Suspense>
-    </>
-  );
-}
-
 export function Game() {
-  // We're using our custom control system that detects mobile automatically,
-  // so we don't need additional device detection here
-  
-  // For mobile, render the canvas directly without keyboard controls
-  // This avoids any KeyboardControls hooks from being used
   return (
-    <Canvas
-      shadows
-      camera={{ position: [0, 5, 10], fov: 60 }}
-      style={{ width: '100%', height: '100%' }}
-    >
-      <GameContent />
-    </Canvas>
+    <KeyboardControls map={keyboardMap}>
+      <Canvas
+        shadows
+        camera={{ position: [0, 5, 10], fov: 60 }}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <Stats />
+        <Suspense fallback={<LoadingPlaceholder />}>
+          {/* Environment elements that follow the player */}
+          <EnvironmentFollower />
+          
+          {/* Ambient light for the scene */}
+          <ambientLight intensity={0.8} />
+          
+          {/* World renderer component */}
+          <WorldRenderer />
+          
+          {/* Player's vehicle */}
+          <Vehicle />
+          
+          {/* Other players */}
+          <OtherPlayers />
+        </Suspense>
+      </Canvas>
+    </KeyboardControls>
   );
 }
