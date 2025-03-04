@@ -96,30 +96,49 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     if (!isCity && !isSuburb) return [];
     
     const buildings: Building[] = [];
-    // Significantly reduce building count in cities and make suburbs even less dense
-    const buildingCount = isCity 
-      ? Math.floor(seededRandom(x * 1000, z * 1000) * 10) + 5 // Reduced from 20+10 to 10+5
-      : Math.floor(seededRandom(x * 1000, z * 1000) * 5) + 3; // Even fewer buildings in suburbs
     
-    for (let i = 0; i < buildingCount; i++) {
-      const bx = (seededRandom(x * 1000 + i, z * 1000) * CHUNK_SIZE) + (x * CHUNK_SIZE);
-      const bz = (seededRandom(x * 1000, z * 1000 + i) * CHUNK_SIZE) + (z * CHUNK_SIZE);
+    // Generate building clusters rather than individual buildings
+    const clusterCount = isCity 
+      ? Math.floor(seededRandom(x * 1000, z * 1000) * 5) + 3 // 3-8 clusters in cities
+      : Math.floor(seededRandom(x * 1000, z * 1000) * 3) + 1; // 1-4 clusters in suburbs
+    
+    for (let c = 0; c < clusterCount; c++) {
+      // Define cluster center
+      const clusterX = (seededRandom(x * 1000 + c, z * 1000) * CHUNK_SIZE * 0.8) + (x * CHUNK_SIZE) + CHUNK_SIZE * 0.1;
+      const clusterZ = (seededRandom(x * 1000, z * 1000 + c) * CHUNK_SIZE * 0.8) + (z * CHUNK_SIZE) + CHUNK_SIZE * 0.1;
       
-      // Height varies by area type
-      const height = isCity
-        ? Math.floor(seededRandom(bx, bz) * 6) + 2 // Taller buildings in cities
-        : Math.floor(seededRandom(bx, bz) * 2) + 1; // Lower buildings in suburbs
+      // Buildings per cluster
+      const buildingsInCluster = isCity 
+        ? Math.floor(seededRandom(clusterX, clusterZ) * 6) + 3 // 3-9 buildings per city cluster
+        : Math.floor(seededRandom(clusterX, clusterZ) * 3) + 2; // 2-5 buildings per suburb cluster
+
+      // Cluster density - how close buildings are to each other
+      const clusterRadius = isCity ? 20 : 30; // City clusters are denser
       
-      const width = Math.floor(seededRandom(bx + 1, bz) * 5) + 3;
-      const depth = Math.floor(seededRandom(bx, bz + 1) * 5) + 3;
-      
-      buildings.push({
-        x: bx,
-        z: bz,
-        height,
-        width,
-        depth
-      });
+      for (let i = 0; i < buildingsInCluster; i++) {
+        // Position buildings in a roughly circular pattern around cluster center
+        const angle = seededRandom(clusterX + i, clusterZ) * Math.PI * 2;
+        const distance = seededRandom(clusterX, clusterZ + i) * clusterRadius;
+        
+        const bx = clusterX + Math.cos(angle) * distance;
+        const bz = clusterZ + Math.sin(angle) * distance;
+        
+        // Height varies by area type
+        const height = isCity
+          ? Math.floor(seededRandom(bx, bz) * 10) + 3 // Taller buildings in cities (3-13 units)
+          : Math.floor(seededRandom(bx, bz) * 3) + 1; // Lower buildings in suburbs (1-4 units)
+        
+        const width = Math.floor(seededRandom(bx + 1, bz) * 6) + 4; // 4-10 units wide
+        const depth = Math.floor(seededRandom(bx, bz + 1) * 6) + 4; // 4-10 units deep
+        
+        buildings.push({
+          x: bx,
+          z: bz,
+          height,
+          width,
+          depth
+        });
+      }
     }
     
     return buildings;
@@ -278,16 +297,82 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
 }
 
 function BuildingMesh({ building }: { building: Building }) {
+  // Generate building color based on height for variety
+  const baseColor = building.height > 8 
+    ? new THREE.Color("#78909C") // Taller buildings are darker gray 
+    : building.height > 4
+      ? new THREE.Color("#B0BEC5") // Medium buildings are medium gray
+      : new THREE.Color("#ECEFF1"); // Shorter buildings are lighter gray
+      
+  // Small random variation in color
+  const hueAdjust = (Math.random() - 0.5) * 0.05;
+  const buildingColor = baseColor.offsetHSL(hueAdjust, 0, 0);
+  
   return (
     <group position={[building.x, 0, building.z]}>
+      {/* Main building */}
       <mesh
         castShadow
         receiveShadow
         position={[0, building.height / 2, 0]}
       >
         <boxGeometry args={[building.width, building.height, building.depth]} />
-        <meshStandardMaterial color="#CFD8DC" />
+        <meshStandardMaterial color={buildingColor.getStyle()} />
       </mesh>
+      
+      {/* Roof (for buildings shorter than 8 units) */}
+      {building.height < 8 && (
+        <mesh
+          castShadow
+          position={[0, building.height + 0.5, 0]}
+        >
+          <boxGeometry args={[building.width + 0.5, 1, building.depth + 0.5]} />
+          <meshStandardMaterial color="#795548" /> {/* Brown roof */}
+        </mesh>
+      )}
+      
+      {/* Windows - front face */}
+      {Array.from({ length: Math.min(5, Math.floor(building.width / 2)) }).map((_, i) => 
+        Array.from({ length: Math.min(5, Math.floor(building.height / 1.5)) }).map((_, j) => (
+          <mesh
+            key={`window-front-${i}-${j}`}
+            position={[
+              (i - Math.floor(building.width / 4)) * 2, 
+              j * 1.5 + 1, 
+              building.depth / 2 + 0.05
+            ]}
+          >
+            <planeGeometry args={[0.7, 0.9]} />
+            <meshStandardMaterial 
+              color={Math.random() > 0.7 ? "#FFECB3" : "#263238"} 
+              emissive={Math.random() > 0.7 ? "#FFECB3" : "#000000"}
+              emissiveIntensity={Math.random() > 0.7 ? 0.5 : 0}
+            />
+          </mesh>
+        ))
+      )}
+      
+      {/* Windows - back face */}
+      {Array.from({ length: Math.min(5, Math.floor(building.width / 2)) }).map((_, i) => 
+        Array.from({ length: Math.min(5, Math.floor(building.height / 1.5)) }).map((_, j) => (
+          <mesh
+            key={`window-back-${i}-${j}`}
+            position={[
+              (i - Math.floor(building.width / 4)) * 2, 
+              j * 1.5 + 1, 
+              -building.depth / 2 - 0.05
+            ]}
+            rotation={[0, Math.PI, 0]}
+          >
+            <planeGeometry args={[0.7, 0.9]} />
+            <meshStandardMaterial 
+              color={Math.random() > 0.7 ? "#FFECB3" : "#263238"} 
+              emissive={Math.random() > 0.7 ? "#FFECB3" : "#000000"}
+              emissiveIntensity={Math.random() > 0.7 ? 0.5 : 0}
+            />
+          </mesh>
+        ))
+      )}
     </group>
   );
 }
@@ -331,13 +416,34 @@ function RoadMesh({ road }: { road: Road }) {
   const angle = Math.atan2(dz, dx);
   
   return (
-    <mesh
-      position={[centerX, 0.01, centerZ]}
-      rotation={[0, angle, 0]}
-      receiveShadow
-    >
-      <planeGeometry args={[length, road.width]} />
-      <meshStandardMaterial color="#455A64" side={THREE.DoubleSide} />
-    </mesh>
+    <group position={[centerX, 0, centerZ]} rotation={[0, angle, 0]}>
+      {/* Main road surface */}
+      <mesh
+        position={[0, 0.01, 0]}
+        receiveShadow
+        rotation={[-Math.PI / 2, 0, 0]}
+      >
+        <planeGeometry args={[length, road.width]} />
+        <meshStandardMaterial color="#455A64" side={THREE.DoubleSide} />
+      </mesh>
+      
+      {/* Center line */}
+      {road.width >= 6 && (
+        <group>
+          {/* Create dotted center line with multiple small segments */}
+          {Array.from({ length: Math.floor(length / 5) }).map((_, i) => (
+            <mesh
+              key={`centerline-${i}`}
+              position={[i * 5 - length / 2 + 2.5, 0.02, 0]}
+              rotation={[-Math.PI / 2, 0, 0]}
+              visible={i % 2 === 0} // Only show every other segment for dotted effect
+            >
+              <planeGeometry args={[2, 0.5]} />
+              <meshStandardMaterial color="#FFEB3B" side={THREE.DoubleSide} />
+            </mesh>
+          ))}
+        </group>
+      )}
+    </group>
   );
 }
