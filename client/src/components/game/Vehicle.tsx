@@ -59,8 +59,11 @@ export function Vehicle() {
   
   // Get controls based on device type
   const { getControls, isMobile } = useControls();
-  // Keep keyboard controls for non-mobile devices 
-  const [subscribeKeys] = useKeyboardControls();
+  
+  // Only use keyboard controls when not on mobile to avoid context errors
+  // Create a dummy function for mobile that will be used as a placeholder
+  const dummySubscribe = () => () => {};
+  const subscribeKeys = !isMobile ? useKeyboardControls()[0] : dummySubscribe;
   
   // We'll handle billboard effect in the main useFrame loop instead to avoid potential conflicts
   
