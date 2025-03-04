@@ -297,6 +297,12 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
 }
 
 function BuildingMesh({ building }: { building: Building }) {
+  // Generate deterministic pseudo-random value based on building position
+  const buildingRandom = (offset = 0) => {
+    const seed = building.x * 12345 + building.z * 67890 + offset;
+    return ((seed * 1103515245 + 12345) % 2147483647) / 2147483647;
+  };
+  
   // Generate building color based on height for variety
   const baseColor = building.height > 8 
     ? new THREE.Color("#78909C") // Taller buildings are darker gray 
@@ -304,9 +310,56 @@ function BuildingMesh({ building }: { building: Building }) {
       ? new THREE.Color("#B0BEC5") // Medium buildings are medium gray
       : new THREE.Color("#ECEFF1"); // Shorter buildings are lighter gray
       
-  // Small random variation in color
-  const hueAdjust = (Math.random() - 0.5) * 0.05;
+  // Small deterministic variation in color
+  const hueAdjust = (buildingRandom(1) - 0.5) * 0.05;
   const buildingColor = baseColor.offsetHSL(hueAdjust, 0, 0);
+  
+  // Create window texture instead of individual meshes
+  const windowCountX = Math.min(5, Math.floor(building.width / 2));
+  const windowCountY = Math.min(5, Math.floor(building.height / 1.5));
+  
+  // Create window texture only if building has windows
+  const windowTexture = useMemo(() => {
+    if (windowCountX <= 0 || windowCountY <= 0) return null;
+    
+    const canvas = document.createElement('canvas');
+    const size = 512; // Texture size
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // Fill with transparent background
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    ctx.fillRect(0, 0, size, size);
+    
+    // Draw windows
+    const windowWidth = size / windowCountX;
+    const windowHeight = size / windowCountY;
+    
+    for (let x = 0; x < windowCountX; x++) {
+      for (let y = 0; y < windowCountY; y++) {
+        // Use deterministic random to decide if window is lit
+        const isLit = buildingRandom(x * 100 + y * 1000 + 2) > 0.7;
+        
+        // Window spacing
+        const padding = Math.min(windowWidth, windowHeight) * 0.2;
+        
+        // Draw window
+        ctx.fillStyle = isLit ? '#FFECB3' : '#263238';
+        ctx.fillRect(
+          x * windowWidth + padding,
+          y * windowHeight + padding,
+          windowWidth - padding * 2,
+          windowHeight - padding * 2
+        );
+      }
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }, [building.x, building.z, windowCountX, windowCountY]);
   
   return (
     <group position={[building.x, 0, building.z]}>
@@ -331,47 +384,37 @@ function BuildingMesh({ building }: { building: Building }) {
         </mesh>
       )}
       
-      {/* Windows - front face */}
-      {Array.from({ length: Math.min(5, Math.floor(building.width / 2)) }).map((_, i) => 
-        Array.from({ length: Math.min(5, Math.floor(building.height / 1.5)) }).map((_, j) => (
-          <mesh
-            key={`window-front-${i}-${j}`}
-            position={[
-              (i - Math.floor(building.width / 4)) * 2, 
-              j * 1.5 + 1, 
-              building.depth / 2 + 0.05
-            ]}
-          >
-            <planeGeometry args={[0.7, 0.9]} />
-            <meshStandardMaterial 
-              color={Math.random() > 0.7 ? "#FFECB3" : "#263238"} 
-              emissive={Math.random() > 0.7 ? "#FFECB3" : "#000000"}
-              emissiveIntensity={Math.random() > 0.7 ? 0.5 : 0}
-            />
-          </mesh>
-        ))
+      {/* Windows - front face (as a single textured plane) */}
+      {windowTexture && (
+        <mesh
+          position={[0, building.height / 2, building.depth / 2 + 0.05]}
+        >
+          <planeGeometry args={[building.width, building.height]} />
+          <meshStandardMaterial 
+            map={windowTexture} 
+            transparent={true}
+            emissiveMap={windowTexture}
+            emissive={"#FFECB3"}
+            emissiveIntensity={0.5}
+          />
+        </mesh>
       )}
       
-      {/* Windows - back face */}
-      {Array.from({ length: Math.min(5, Math.floor(building.width / 2)) }).map((_, i) => 
-        Array.from({ length: Math.min(5, Math.floor(building.height / 1.5)) }).map((_, j) => (
-          <mesh
-            key={`window-back-${i}-${j}`}
-            position={[
-              (i - Math.floor(building.width / 4)) * 2, 
-              j * 1.5 + 1, 
-              -building.depth / 2 - 0.05
-            ]}
-            rotation={[0, Math.PI, 0]}
-          >
-            <planeGeometry args={[0.7, 0.9]} />
-            <meshStandardMaterial 
-              color={Math.random() > 0.7 ? "#FFECB3" : "#263238"} 
-              emissive={Math.random() > 0.7 ? "#FFECB3" : "#000000"}
-              emissiveIntensity={Math.random() > 0.7 ? 0.5 : 0}
-            />
-          </mesh>
-        ))
+      {/* Windows - back face (as a single textured plane) */}
+      {windowTexture && (
+        <mesh
+          position={[0, building.height / 2, -building.depth / 2 - 0.05]}
+          rotation={[0, Math.PI, 0]}
+        >
+          <planeGeometry args={[building.width, building.height]} />
+          <meshStandardMaterial 
+            map={windowTexture} 
+            transparent={true}
+            emissiveMap={windowTexture}
+            emissive={"#FFECB3"}
+            emissiveIntensity={0.5}
+          />
+        </mesh>
       )}
     </group>
   );
@@ -415,35 +458,65 @@ function RoadMesh({ road }: { road: Road }) {
   // Calculate the rotation angle of the road
   const angle = Math.atan2(dz, dx);
   
+  // Create road texture with center line
+  const roadTexture = useMemo(() => {
+    if (road.width < 6) return null; // Only create texture for roads with center lines
+    
+    const canvas = document.createElement('canvas');
+    const size = 512;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    
+    // Road background
+    ctx.fillStyle = '#455A64';
+    ctx.fillRect(0, 0, size, size);
+    
+    // Only draw center line if road is wide enough
+    if (road.width >= 6) {
+      // Center line
+      const centerLineWidth = size * 0.05; // 5% of texture width
+      const segmentLength = size * 0.2; // 20% of texture length
+      const gapLength = size * 0.2; // 20% of texture length
+      
+      ctx.fillStyle = '#FFEB3B';
+      // Draw dotted line along the height (Y axis) of the texture
+      for (let y = 0; y < size; y += segmentLength + gapLength) {
+        ctx.fillRect(
+          size / 2 - centerLineWidth / 2, // Center X position
+          y, // Y position
+          centerLineWidth, // Width
+          segmentLength // Height
+        );
+      }
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.repeat.set(length / 10, 1); // Repeat texture based on road length
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.needsUpdate = true;
+    return texture;
+  }, [road.width, length]);
+  
   return (
     <group position={[centerX, 0, centerZ]} rotation={[0, angle, 0]}>
-      {/* Main road surface */}
+      {/* Main road surface with texture */}
       <mesh
         position={[0, 0.01, 0]}
         receiveShadow
         rotation={[-Math.PI / 2, 0, 0]}
       >
         <planeGeometry args={[length, road.width]} />
-        <meshStandardMaterial color="#455A64" side={THREE.DoubleSide} />
+        {road.width >= 6 && roadTexture ? (
+          <meshStandardMaterial 
+            map={roadTexture} 
+            side={THREE.DoubleSide} 
+          />
+        ) : (
+          <meshStandardMaterial color="#455A64" side={THREE.DoubleSide} />
+        )}
       </mesh>
-      
-      {/* Center line */}
-      {road.width >= 6 && (
-        <group>
-          {/* Create dotted center line with multiple small segments */}
-          {Array.from({ length: Math.floor(length / 5) }).map((_, i) => (
-            <mesh
-              key={`centerline-${i}`}
-              position={[i * 5 - length / 2 + 2.5, 0.02, 0]}
-              rotation={[-Math.PI / 2, 0, 0]}
-              visible={i % 2 === 0} // Only show every other segment for dotted effect
-            >
-              <planeGeometry args={[2, 0.5]} />
-              <meshStandardMaterial color="#FFEB3B" side={THREE.DoubleSide} />
-            </mesh>
-          ))}
-        </group>
-      )}
     </group>
   );
 }
