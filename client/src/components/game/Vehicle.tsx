@@ -490,8 +490,8 @@ export function Vehicle() {
         let roadDetailsHtml = '';
         if (window.nearbyRoads && window.nearbyRoads.length > 0) {
           // Get the current position for distance calculations
-          const posX = vehicleRef.current.position.x;
-          const posZ = vehicleRef.current.position.z;
+          const posX = vehicleRef.current?.position?.x ?? 0;
+          const posZ = vehicleRef.current?.position?.z ?? 0;
           
           // Add a header for the road details section
           roadDetailsHtml = `<div style="margin-top: 10px; border-top: 1px solid #555; padding-top: 5px;">
