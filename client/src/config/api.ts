@@ -21,7 +21,7 @@ const getApiConfig = (): ApiConfig => {
   const protocol = window.location.protocol;
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.hostname;
-  const port = import.meta.env.VITE_SERVER_PORT || '3000';
+  const port = import.meta.env.VITE_SERVER_PORT || '';
   
   return {
     baseUrl: `${protocol}//${host}:${port}`,
