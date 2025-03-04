@@ -101,14 +101,14 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
   const isSuburb = terrainType === 'suburb';
   
   // Generate buildings, trees, and roads based on chunk type
-  // First define the roads for collision detection with buildings
-  const roads = useMemo(() => {
-    const roads: Road[] = [];
+  // Define the roads for both collision detection and rendering
+  const chunkRoads = useMemo(() => {
+    const roadsList: Road[] = [];
     
     if (isCity) {
       // City roads in a less dense grid pattern
       for (let i = 0; i < CHUNK_SIZE; i += 64) { // Reduced density from 32 to 64
-        roads.push({
+        roadsList.push({
           x1: x * CHUNK_SIZE,
           z1: z * CHUNK_SIZE + i,
           x2: x * CHUNK_SIZE + CHUNK_SIZE,
@@ -116,7 +116,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
           width: 10 // Slightly wider roads
         });
         
-        roads.push({
+        roadsList.push({
           x1: x * CHUNK_SIZE + i,
           z1: z * CHUNK_SIZE,
           x2: x * CHUNK_SIZE + i,
@@ -127,7 +127,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     } else if (isSuburb) {
       // Suburb roads - less regular pattern with some curves
       // Main roads - reduced to just one road for less density
-      roads.push({
+      roadsList.push({
         x1: x * CHUNK_SIZE,
         z1: z * CHUNK_SIZE + CHUNK_SIZE / 2, // Only one road in middle instead of two
         x2: x * CHUNK_SIZE + CHUNK_SIZE,
@@ -138,7 +138,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       // Cross roads at irregular intervals - reduced from 3 to 2
       for (let i = 0; i < 2; i++) {
         const offset = seededRandom(x * 3000 + i, z * 3000) * CHUNK_SIZE * 0.8 + CHUNK_SIZE * 0.1;
-        roads.push({
+        roadsList.push({
           x1: x * CHUNK_SIZE + offset,
           z1: z * CHUNK_SIZE,
           x2: x * CHUNK_SIZE + offset,
@@ -149,7 +149,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     } else {
       // Country roads - now more interesting with occasional crossroads
       // Main road
-      roads.push({
+      roadsList.push({
         x1: x * CHUNK_SIZE,
         z1: z * CHUNK_SIZE + CHUNK_SIZE / 2,
         x2: x * CHUNK_SIZE + CHUNK_SIZE,
@@ -159,7 +159,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       
       // Occasional perpendicular roads in countryside (reduced chance - 1 in 4 instead of 1 in 3)
       if (seededRandom(x * 4000, z * 4000) > 0.75) {
-        roads.push({
+        roadsList.push({
           x1: x * CHUNK_SIZE + CHUNK_SIZE / 2,
           z1: z * CHUNK_SIZE,
           x2: x * CHUNK_SIZE + CHUNK_SIZE / 2,
@@ -170,7 +170,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       
       // Very occasional diagonal dirt roads (1 in 5 chance)
       if (seededRandom(x * 5000, z * 5000) > 0.8) {
-        roads.push({
+        roadsList.push({
           x1: x * CHUNK_SIZE,
           z1: z * CHUNK_SIZE,
           x2: x * CHUNK_SIZE + CHUNK_SIZE,
@@ -180,7 +180,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       }
     }
     
-    return roads;
+    return roadsList;
   }, [x, z, isCity, seededRandom]);
 
   // Helper function to check if a building would intersect with any road
@@ -191,7 +191,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     const buildingBottom = bz + depth / 2;
     
     // Check against each road
-    for (const road of roads) {
+    for (const road of chunkRoads) {
       // Calculate road bounds with extra padding for safety
       const padding = road.width / 2 + 2; // Road width/2 plus some extra space
       
@@ -277,11 +277,6 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
           bx = clusterX + Math.cos(angle) * distance;
           bz = clusterZ + Math.sin(angle) * distance;
           
-          // Height varies by area type
-          const height = isCity
-            ? Math.floor(seededRandom(bx, bz) * 10) + 3 // Taller buildings in cities (3-13 units)
-            : Math.floor(seededRandom(bx, bz) * 3) + 1; // Lower buildings in suburbs (1-4 units)
-          
           width = Math.floor(seededRandom(bx + 1, bz) * 6) + 4; // 4-10 units wide
           depth = Math.floor(seededRandom(bx, bz + 1) * 6) + 4; // 4-10 units deep
           
@@ -310,7 +305,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     }
     
     return buildings;
-  }, [x, z, isCity, seededRandom, roads, wouldIntersectRoad]);
+  }, [x, z, isCity, seededRandom, chunkRoads, wouldIntersectRoad]);
   
   const trees = useMemo(() => {
     // No trees in cities, fewer in suburbs
@@ -339,90 +334,10 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     return trees;
   }, [x, z, isCity, seededRandom]);
   
-  const roads = useMemo(() => {
-    const roads: Road[] = [];
-    
-    if (isCity) {
-      // City roads in a less dense grid pattern
-      for (let i = 0; i < CHUNK_SIZE; i += 64) { // Reduced density from 32 to 64
-        roads.push({
-          x1: x * CHUNK_SIZE,
-          z1: z * CHUNK_SIZE + i,
-          x2: x * CHUNK_SIZE + CHUNK_SIZE,
-          z2: z * CHUNK_SIZE + i,
-          width: 10 // Slightly wider roads
-        });
-        
-        roads.push({
-          x1: x * CHUNK_SIZE + i,
-          z1: z * CHUNK_SIZE,
-          x2: x * CHUNK_SIZE + i,
-          z2: z * CHUNK_SIZE + CHUNK_SIZE,
-          width: 10
-        });
-      }
-    } else if (isSuburb) {
-      // Suburb roads - less regular pattern with some curves
-      // Main roads - reduced to just one road for less density
-      roads.push({
-        x1: x * CHUNK_SIZE,
-        z1: z * CHUNK_SIZE + CHUNK_SIZE / 2, // Only one road in middle instead of two
-        x2: x * CHUNK_SIZE + CHUNK_SIZE,
-        z2: z * CHUNK_SIZE + CHUNK_SIZE / 2,
-        width: 8
-      });
-      
-      // Cross roads at irregular intervals - reduced from 3 to 2
-      for (let i = 0; i < 2; i++) {
-        const offset = seededRandom(x * 3000 + i, z * 3000) * CHUNK_SIZE * 0.8 + CHUNK_SIZE * 0.1;
-        roads.push({
-          x1: x * CHUNK_SIZE + offset,
-          z1: z * CHUNK_SIZE,
-          x2: x * CHUNK_SIZE + offset,
-          z2: z * CHUNK_SIZE + CHUNK_SIZE,
-          width: 7
-        });
-      }
-    } else {
-      // Country roads - now more interesting with occasional crossroads
-      // Main road
-      roads.push({
-        x1: x * CHUNK_SIZE,
-        z1: z * CHUNK_SIZE + CHUNK_SIZE / 2,
-        x2: x * CHUNK_SIZE + CHUNK_SIZE,
-        z2: z * CHUNK_SIZE + CHUNK_SIZE / 2,
-        width: 8
-      });
-      
-      // Occasional perpendicular roads in countryside (reduced chance - 1 in 4 instead of 1 in 3)
-      if (seededRandom(x * 4000, z * 4000) > 0.75) {
-        roads.push({
-          x1: x * CHUNK_SIZE + CHUNK_SIZE / 2,
-          z1: z * CHUNK_SIZE,
-          x2: x * CHUNK_SIZE + CHUNK_SIZE / 2,
-          z2: z * CHUNK_SIZE + CHUNK_SIZE,
-          width: 6 // Slightly narrower countryside crossing
-        });
-      }
-      
-      // Very occasional diagonal dirt roads (1 in 5 chance)
-      if (seededRandom(x * 5000, z * 5000) > 0.8) {
-        roads.push({
-          x1: x * CHUNK_SIZE,
-          z1: z * CHUNK_SIZE,
-          x2: x * CHUNK_SIZE + CHUNK_SIZE,
-          z2: z * CHUNK_SIZE + CHUNK_SIZE,
-          width: 6 // Wider dirt road to show center line
-        });
-      }
-    }
-    
-    return roads;
-  }, [x, z, isCity]);
   
   // Function to check if a point is on a road
   const isPointOnRoad = (x: number, z: number) => {
-    for (const road of roads) {
+    for (const road of chunkRoads) {
       // Road bounds with padding
       const padding = road.width / 2;
       
@@ -472,7 +387,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
   useEffect(() => {
     // Register the road checking function
     window.isOnRoad = (position) => isPointOnRoad(position.x, position.z);
-    window.nearbyRoads = roads;
+    window.nearbyRoads = chunkRoads;
     
     // Share tree data for collision detection
     if (window.updateNearbyTrees) {
@@ -492,7 +407,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       delete window.isOnRoad;
       delete window.nearbyRoads;
     };
-  }, [trees, roads, isPointOnRoad]);
+  }, [trees, chunkRoads, isPointOnRoad]);
   
   return (
     <group>
@@ -507,7 +422,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       ))}
       
       {/* Render roads */}
-      {roads.map((road, index) => (
+      {chunkRoads.map((road, index) => (
         <RoadMesh key={`road-${index}`} road={road} />
       ))}
     </group>
