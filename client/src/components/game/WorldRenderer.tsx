@@ -175,8 +175,8 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     const roads: Road[] = [];
     
     if (isCity) {
-      // City roads in a denser grid pattern
-      for (let i = 0; i < CHUNK_SIZE; i += 32) { // Keep grid density the same
+      // City roads in a less dense grid pattern
+      for (let i = 0; i < CHUNK_SIZE; i += 64) { // Reduced density from 32 to 64
         roads.push({
           x1: x * CHUNK_SIZE,
           z1: z * CHUNK_SIZE + i,
@@ -195,25 +195,17 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       }
     } else if (isSuburb) {
       // Suburb roads - less regular pattern with some curves
-      // Main roads
+      // Main roads - reduced to just one road for less density
       roads.push({
         x1: x * CHUNK_SIZE,
-        z1: z * CHUNK_SIZE + CHUNK_SIZE / 3,
+        z1: z * CHUNK_SIZE + CHUNK_SIZE / 2, // Only one road in middle instead of two
         x2: x * CHUNK_SIZE + CHUNK_SIZE,
-        z2: z * CHUNK_SIZE + CHUNK_SIZE / 3,
+        z2: z * CHUNK_SIZE + CHUNK_SIZE / 2,
         width: 8
       });
       
-      roads.push({
-        x1: x * CHUNK_SIZE,
-        z1: z * CHUNK_SIZE + CHUNK_SIZE * 2/3,
-        x2: x * CHUNK_SIZE + CHUNK_SIZE,
-        z2: z * CHUNK_SIZE + CHUNK_SIZE * 2/3,
-        width: 8
-      });
-      
-      // Cross roads at irregular intervals
-      for (let i = 0; i < 3; i++) {
+      // Cross roads at irregular intervals - reduced from 3 to 2
+      for (let i = 0; i < 2; i++) {
         const offset = seededRandom(x * 3000 + i, z * 3000) * CHUNK_SIZE * 0.8 + CHUNK_SIZE * 0.1;
         roads.push({
           x1: x * CHUNK_SIZE + offset,
@@ -234,8 +226,8 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
         width: 8
       });
       
-      // Occasional perpendicular roads in countryside (1 in 3 chance)
-      if (seededRandom(x * 4000, z * 4000) > 0.66) {
+      // Occasional perpendicular roads in countryside (reduced chance - 1 in 4 instead of 1 in 3)
+      if (seededRandom(x * 4000, z * 4000) > 0.75) {
         roads.push({
           x1: x * CHUNK_SIZE + CHUNK_SIZE / 2,
           z1: z * CHUNK_SIZE,
@@ -252,7 +244,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
           z1: z * CHUNK_SIZE,
           x2: x * CHUNK_SIZE + CHUNK_SIZE,
           z2: z * CHUNK_SIZE + CHUNK_SIZE,
-          width: 4 // Narrow dirt road
+          width: 6 // Wider dirt road to show center line
         });
       }
     }
@@ -464,36 +456,37 @@ function RoadMesh({ road }: { road: Road }) {
     
     const canvas = document.createElement('canvas');
     const size = 512;
+    // Make canvas rectangular - wider in the direction of road
     canvas.width = size;
-    canvas.height = size;
+    canvas.height = size / 4; // Make it shorter in the perpendicular direction
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     
     // Road background
     ctx.fillStyle = '#455A64';
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillRect(0, 0, size, size / 4);
     
     // Only draw center line if road is wide enough
     if (road.width >= 6) {
       // Center line
-      const centerLineWidth = size * 0.05; // 5% of texture width
-      const segmentLength = size * 0.2; // 20% of texture length
-      const gapLength = size * 0.2; // 20% of texture length
+      const lineWidth = size / 40; // Line width (perpendicular to road direction)
+      const segmentLength = size / 10; // Segment length (along road direction)
+      const gapLength = size / 10; // Gap length between segments
       
       ctx.fillStyle = '#FFEB3B';
-      // Draw dotted line along the height (Y axis) of the texture
-      for (let y = 0; y < size; y += segmentLength + gapLength) {
+      // Draw dotted line along the X axis of the texture (parallel to road direction)
+      for (let x = 0; x < size; x += segmentLength + gapLength) {
         ctx.fillRect(
-          size / 2 - centerLineWidth / 2, // Center X position
-          y, // Y position
-          centerLineWidth, // Width
-          segmentLength // Height
+          x, // X position (along road)
+          (size / 4) / 2 - lineWidth / 2, // Y position (center of road)
+          segmentLength, // Width (segment length along road)
+          lineWidth // Height (line width perpendicular to road)
         );
       }
     }
     
     const texture = new THREE.CanvasTexture(canvas);
-    texture.repeat.set(length / 10, 1); // Repeat texture based on road length
+    texture.repeat.set(length / 20, 1); // Repeat texture based on road length
     texture.wrapS = THREE.RepeatWrapping;
     texture.needsUpdate = true;
     return texture;
