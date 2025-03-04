@@ -486,6 +486,99 @@ export function Vehicle() {
         // Calculate speed in km/h for display
         const speedKmh = speedRef.current * 200;
         
+        // Create detailed road information
+        let roadDetailsHtml = '';
+        if (window.nearbyRoads && window.nearbyRoads.length > 0) {
+          // Get the current position for distance calculations
+          const posX = vehicleRef.current.position.x;
+          const posZ = vehicleRef.current.position.z;
+          
+          // Add a header for the road details section
+          roadDetailsHtml = `<div style="margin-top: 10px; border-top: 1px solid #555; padding-top: 5px;">
+            <div><strong>Detailed Road Information:</strong></div>`;
+          
+          // Loop through nearby roads and add their details
+          window.nearbyRoads.forEach((road, index) => {
+            // Calculate the distance from vehicle to road center
+            const roadCenterX = (road.x1 + road.x2) / 2;
+            const roadCenterZ = (road.z1 + road.z2) / 2;
+            const distance = Math.sqrt(
+              Math.pow(posX - roadCenterX, 2) + 
+              Math.pow(posZ - roadCenterZ, 2)
+            );
+            
+            // Determine road orientation
+            const isHorizontal = Math.abs(road.x2 - road.x1) > Math.abs(road.z2 - road.z1);
+            const isVertical = Math.abs(road.z2 - road.z1) > Math.abs(road.x2 - road.x1);
+            const isDiagonal = !isHorizontal && !isVertical;
+            
+            // Calculate the bounds of the road
+            const roadLeft = Math.min(road.x1, road.x2);
+            const roadRight = Math.max(road.x1, road.x2);
+            const roadTop = Math.min(road.z1, road.z2);
+            const roadBottom = Math.max(road.z1, road.z2);
+            
+            // Calculate distance to road (for debug)
+            let specialDistanceInfo = '';
+            
+            // For horizontal roads
+            if (isHorizontal) {
+              const roadZ = (road.z1 + road.z2) / 2;
+              const isInXRange = posX >= roadLeft && posX <= roadRight;
+              const distanceToZ = Math.abs(posZ - roadZ);
+              specialDistanceInfo = `
+                <div>X-Range: ${isInXRange ? 'Inside' : 'Outside'} (${roadLeft.toFixed(1)}-${roadRight.toFixed(1)})</div>
+                <div>Z Distance: ${distanceToZ.toFixed(1)} (Width/2=${(road.width/2).toFixed(1)})</div>
+              `;
+            }
+            // For vertical roads
+            else if (isVertical) {
+              const roadX = (road.x1 + road.x2) / 2;
+              const isInZRange = posZ >= roadTop && posZ <= roadBottom;
+              const distanceToX = Math.abs(posX - roadX);
+              specialDistanceInfo = `
+                <div>Z-Range: ${isInZRange ? 'Inside' : 'Outside'} (${roadTop.toFixed(1)}-${roadBottom.toFixed(1)})</div>
+                <div>X Distance: ${distanceToX.toFixed(1)} (Width/2=${(road.width/2).toFixed(1)})</div>
+              `;
+            }
+            // For diagonal roads
+            else if (isDiagonal) {
+              // Calculate line equation Ax + By + C = 0
+              const A = road.z2 - road.z1;
+              const B = road.x1 - road.x2;
+              const C = road.x2 * road.z1 - road.x1 * road.z2;
+              
+              // Calculate perpendicular distance
+              const perpDistance = Math.abs(A * posX + B * posZ + C) / Math.sqrt(A * A + B * B);
+              
+              // Check if position is within the bounding box
+              const isInBoundingBox = posX >= roadLeft - road.width/2 && 
+                                     posX <= roadRight + road.width/2 &&
+                                     posZ >= roadTop - road.width/2 && 
+                                     posZ <= roadBottom + road.width/2;
+              
+              specialDistanceInfo = `
+                <div>Bounding Box: ${isInBoundingBox ? 'Inside' : 'Outside'}</div>
+                <div>Perp Distance: ${perpDistance.toFixed(1)} (Width/2=${(road.width/2).toFixed(1)})</div>
+              `;
+            }
+            
+            // Add this road's information to the HTML
+            roadDetailsHtml += `
+              <div style="margin-top: 5px; border: 1px solid #333; padding: 3px; font-size: 12px;">
+                <div>Road #${index + 1} - Type: ${isHorizontal ? 'Horizontal' : isVertical ? 'Vertical' : 'Diagonal'}</div>
+                <div>Coords: (${road.x1.toFixed(1)},${road.z1.toFixed(1)}) to (${road.x2.toFixed(1)},${road.z2.toFixed(1)})</div>
+                <div>Width: ${road.width.toFixed(1)}, Distance: ${distance.toFixed(1)}</div>
+                ${specialDistanceInfo}
+              </div>
+            `;
+          });
+          
+          // Close the road details section
+          roadDetailsHtml += `</div>`;
+        }
+        
+        // Set the indicator HTML with the enhanced information
         indicator.innerHTML = `
           <div>Position: ${positionText}</div>
           <div>Status: <span style="color: ${isOnRoadRef.current ? 'lime' : 'red'}">${roadStatus}</span></div>
@@ -494,7 +587,113 @@ export function Vehicle() {
           <div>Speed Penalty: ${isOnRoadRef.current ? 'None' : '25%'}</div>
           <div>Road Detection: <span style="color: ${isRoadDetectionAvailable ? 'lime' : 'red'}">${isRoadDetectionAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}</span></div>
           <div>Road Count: ${window.nearbyRoads ? window.nearbyRoads.length : 'Unknown'}</div>
+          ${roadDetailsHtml}
         `;
+        
+        // Adjust the container style for the expanded content
+        indicator.style.maxHeight = '80vh';
+        indicator.style.overflowY = 'auto';
+        
+        // Add a button to manually test the road detection at the current position
+        if (!indicator.querySelector('#test-road-btn')) {
+          const testDiv = document.createElement('div');
+          testDiv.style.marginTop = '10px';
+          testDiv.style.paddingTop = '5px';
+          testDiv.style.borderTop = '1px solid #555';
+          
+          // Test button for current position
+          const testButton = document.createElement('button');
+          testButton.id = 'test-road-btn';
+          testButton.textContent = 'Test Current Position';
+          testButton.style.padding = '5px';
+          testButton.style.marginRight = '5px';
+          testButton.onclick = () => {
+            if (window.isOnRoad && vehicleRef.current) {
+              const pos = vehicleRef.current.position;
+              const result = window.isOnRoad({x: pos.x, z: pos.z});
+              
+              // Create a new element with the result
+              const resultDiv = document.createElement('div');
+              resultDiv.style.marginTop = '5px';
+              resultDiv.innerHTML = `
+                <div>Manual Test Result for position (${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}):</div>
+                <div style="color: ${result ? 'lime' : 'red'}">${result ? 'ON ROAD' : 'OFF ROAD'}</div>
+              `;
+              
+              // Add or replace the result
+              const existingResult = indicator.querySelector('#test-result');
+              if (existingResult) {
+                existingResult.replaceWith(resultDiv);
+              } else {
+                resultDiv.id = 'test-result';
+                testDiv.appendChild(resultDiv);
+              }
+            }
+          };
+          
+          // Add input fields for custom coordinates testing
+          const coordsForm = document.createElement('div');
+          coordsForm.style.marginTop = '10px';
+          
+          // X coordinate input
+          const xInput = document.createElement('input');
+          xInput.id = 'test-x-coord';
+          xInput.type = 'text';
+          xInput.placeholder = 'X coordinate';
+          xInput.style.width = '100px';
+          xInput.style.marginRight = '5px';
+          xInput.value = vehicleRef.current ? vehicleRef.current.position.x.toFixed(1) : '0';
+          
+          // Z coordinate input
+          const zInput = document.createElement('input');
+          zInput.id = 'test-z-coord';
+          zInput.type = 'text';
+          zInput.placeholder = 'Z coordinate';
+          zInput.style.width = '100px';
+          zInput.style.marginRight = '5px';
+          zInput.value = vehicleRef.current ? vehicleRef.current.position.z.toFixed(1) : '0';
+          
+          // Test custom coordinates button
+          const testCustomBtn = document.createElement('button');
+          testCustomBtn.textContent = 'Test Custom Coords';
+          testCustomBtn.style.padding = '5px';
+          testCustomBtn.onclick = () => {
+            if (window.isOnRoad) {
+              const x = parseFloat(xInput.value);
+              const z = parseFloat(zInput.value);
+              
+              if (!isNaN(x) && !isNaN(z)) {
+                const result = window.isOnRoad({x, z});
+                
+                // Create a new element with the result
+                const resultDiv = document.createElement('div');
+                resultDiv.style.marginTop = '5px';
+                resultDiv.innerHTML = `
+                  <div>Custom Test Result for position (${x.toFixed(1)}, ${z.toFixed(1)}):</div>
+                  <div style="color: ${result ? 'lime' : 'red'}">${result ? 'ON ROAD' : 'OFF ROAD'}</div>
+                `;
+                
+                // Add or replace the result
+                const existingResult = indicator.querySelector('#custom-test-result');
+                if (existingResult) {
+                  existingResult.replaceWith(resultDiv);
+                } else {
+                  resultDiv.id = 'custom-test-result';
+                  coordsForm.appendChild(resultDiv);
+                }
+              }
+            }
+          };
+          
+          // Add all elements to the form
+          coordsForm.appendChild(xInput);
+          coordsForm.appendChild(zInput);
+          coordsForm.appendChild(testCustomBtn);
+          
+          testDiv.appendChild(testButton);
+          testDiv.appendChild(coordsForm);
+          indicator.appendChild(testDiv);
+        }
       }
       
       requestAnimationFrame(updateIndicator);

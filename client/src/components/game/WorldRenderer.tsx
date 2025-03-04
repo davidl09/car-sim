@@ -403,8 +403,37 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
 
   // Share tree data and road information with the Vehicle component
   useEffect(() => {
-    // Register the road checking function
-    window.isOnRoad = (position) => isPointOnRoad(position.x, position.z);
+    // Register the road checking function with debug information
+    window.isOnRoad = (position) => {
+      // Create a flash indicator to show when the function is called
+      const indicator = document.createElement('div');
+      indicator.style.position = 'fixed';
+      indicator.style.bottom = '10px';
+      indicator.style.right = '10px';
+      indicator.style.backgroundColor = 'rgba(255, 255, 0, 0.7)';
+      indicator.style.color = 'black';
+      indicator.style.padding = '5px';
+      indicator.style.borderRadius = '5px';
+      indicator.style.fontFamily = 'monospace';
+      indicator.style.fontSize = '12px';
+      indicator.textContent = `isOnRoad(${position.x.toFixed(1)}, ${position.z.toFixed(1)})`;
+      document.body.appendChild(indicator);
+      
+      // Remove the indicator after a short time
+      setTimeout(() => {
+        if (indicator.parentNode) {
+          indicator.parentNode.removeChild(indicator);
+        }
+      }, 1000);
+      
+      // Call the actual function
+      const result = isPointOnRoad(position.x, position.z);
+      
+      // Log the result for debugging
+      console.log(`isOnRoad(${position.x.toFixed(1)}, ${position.z.toFixed(1)}) => ${result}`);
+      
+      return result;
+    };
     window.nearbyRoads = chunkRoads;
     
     // Share tree data for collision detection
