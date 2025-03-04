@@ -411,76 +411,12 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
   }, [x, z, isCity, seededRandom]);
   
   
-  // Function to check if a point is on a road
-  const isPointOnRoad = (x: number, z: number) => {
-    // Debug console log
-    // console.log(`Checking if point ${x.toFixed(1)},${z.toFixed(1)} is on road among ${chunkRoads.length} roads`);
-    
-    for (const road of chunkRoads) {
-      // Road bounds with padding
-      const padding = road.width / 2;
-      
-      // For horizontal roads (x1 and x2 are far apart, z1 and z2 are close)
-      if (Math.abs(road.x2 - road.x1) > Math.abs(road.z2 - road.z1)) {
-        const roadLeft = Math.min(road.x1, road.x2);
-        const roadRight = Math.max(road.x1, road.x2);
-        const roadZ = (road.z1 + road.z2) / 2;
-        
-        if (x >= roadLeft && x <= roadRight && 
-            z >= roadZ - padding && z <= roadZ + padding) {
-          // console.log(`On horizontal road: ${roadLeft.toFixed(1)},${roadZ.toFixed(1)} to ${roadRight.toFixed(1)},${roadZ.toFixed(1)} with width ${road.width}`);
-          return true;
-        }
-      } 
-      // For vertical roads (z1 and z2 are far apart, x1 and x2 are close)
-      else if (Math.abs(road.z2 - road.z1) > Math.abs(road.x2 - road.x1)) {
-        const roadTop = Math.min(road.z1, road.z2);
-        const roadBottom = Math.max(road.z1, road.z2);
-        const roadX = (road.x1 + road.x2) / 2;
-        
-        if (z >= roadTop && z <= roadBottom && 
-            x >= roadX - padding && x <= roadX + padding) {
-          // console.log(`On vertical road: ${roadX.toFixed(1)},${roadTop.toFixed(1)} to ${roadX.toFixed(1)},${roadBottom.toFixed(1)} with width ${road.width}`);
-          return true;
-        }
-      }
-      // For diagonal roads - road is neither primarily horizontal or vertical
-      else if (Math.abs(road.x2 - road.x1) > 0 && Math.abs(road.z2 - road.z1) > 0) {
-        // Calculate the distance from the point to the road line
-        const A = road.z2 - road.z1;
-        const B = road.x1 - road.x2;
-        const C = road.x2 * road.z1 - road.x1 * road.z2;
-        
-        // Make sure we're within the bounds of the road segment, not just the infinite line
-        const roadMinX = Math.min(road.x1, road.x2);
-        const roadMaxX = Math.max(road.x1, road.x2);
-        const roadMinZ = Math.min(road.z1, road.z2);
-        const roadMaxZ = Math.max(road.z1, road.z2);
-        
-        // Check if point is within the bounding box of the road first
-        if (x >= roadMinX - padding && x <= roadMaxX + padding &&
-            z >= roadMinZ - padding && z <= roadMaxZ + padding) {
-          
-          // Then check the actual distance to the line
-          const distance = Math.abs(A * x + B * z + C) / Math.sqrt(A * A + B * B);
-          
-          // Check if the point is close enough to the road
-          if (distance < padding) {
-            // console.log(`On diagonal road with distance ${distance.toFixed(2)} < padding ${padding.toFixed(2)}`);
-            return true;
-          }
-        }
-      }
-    }
-    
-    return false;
-  };
+  // No longer need the local isPointOnRoad function since we use the global one
 
   // Share tree data and road information with the global registry
   useEffect(() => {
     // Add this chunk's roads to the global road registry
-    // First, generate a unique key for each road in this chunk to avoid duplicates
-    const roadKeys: Record<string, boolean> = {};
+    // We use chunk ID to track roads, no need for individual road keys
     
     // Clear out any previously registered roads from this chunk
     // We need to identify roads from this specific chunk to avoid removing roads from other chunks
