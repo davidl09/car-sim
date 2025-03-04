@@ -7,7 +7,7 @@ import { WorldRenderer } from './WorldRenderer';
 import { Vehicle } from './Vehicle';
 import { OtherPlayers } from './OtherPlayers';
 import { LoadingPlaceholder } from '../ui/LoadingPlaceholder';
-import { Controls } from './Controls';
+import { DesktopControls, MobileControls } from './Controls';
 import { useGameStore } from '@/store/gameStore';
 import { isMobileDevice } from '@/utils/deviceDetection';
 
@@ -37,7 +37,6 @@ const keyboardMap = [
 function EnvironmentFollower() {
   const playerId = useGameStore((state) => state.playerId);
   const player = useGameStore((state) => playerId ? state.players[playerId] : null);
-  //const { scene } = useThree();
   
   // Reference to environment elements
   // Using any for ref types to avoid drei type conflicts
@@ -84,6 +83,48 @@ function EnvironmentFollower() {
   );
 }
 
+// Common game elements that don't rely on control scheme
+function CommonGameElements() {
+  return (
+    <>
+      <Stats />
+      <Suspense fallback={<LoadingPlaceholder />}>
+        {/* Environment elements that follow the player */}
+        <EnvironmentFollower />
+        
+        {/* Ambient light for the scene */}
+        <ambientLight intensity={0.8} />
+        
+        {/* World renderer component */}
+        <WorldRenderer />
+        
+        {/* Other players */}
+        <OtherPlayers />
+      </Suspense>
+    </>
+  );
+}
+
+// Desktop-specific vehicle implementation
+function DesktopVehicle() {
+  return (
+    <Suspense fallback={<LoadingPlaceholder />}>
+      <Vehicle controlType="desktop" />
+      <DesktopControls />
+    </Suspense>
+  );
+}
+
+// Mobile-specific vehicle implementation
+function MobileVehicle() {
+  return (
+    <Suspense fallback={<LoadingPlaceholder />}>
+      <Vehicle controlType="mobile" />
+      <MobileControls />
+    </Suspense>
+  );
+}
+
 export function Game() {
   const [isMobile, setIsMobile] = useState(false);
   
@@ -91,60 +132,6 @@ export function Game() {
   useEffect(() => {
     setIsMobile(isMobileDevice());
   }, []);
-  
-  // Game content components separated for desktop and mobile to avoid hooks being called conditionally
-  
-  // Desktop version uses keyboard controls
-  const DesktopGameContent = () => (
-    <>
-      <Stats />
-      <Suspense fallback={<LoadingPlaceholder />}>
-        {/* Environment elements that follow the player */}
-        <EnvironmentFollower />
-        
-        {/* Ambient light for the scene */}
-        <ambientLight intensity={0.8} />
-        
-        {/* World renderer component */}
-        <WorldRenderer />
-        
-        {/* Player's vehicle */}
-        <Vehicle />
-        
-        {/* Other players */}
-        <OtherPlayers />
-        
-        {/* Controls component just for debugging on desktop */}
-        <Controls />
-      </Suspense>
-    </>
-  );
-  
-  // Mobile version uses touch controls
-  const MobileGameContent = () => (
-    <>
-      <Stats />
-      <Suspense fallback={<LoadingPlaceholder />}>
-        {/* Environment elements that follow the player */}
-        <EnvironmentFollower />
-        
-        {/* Ambient light for the scene */}
-        <ambientLight intensity={0.8} />
-        
-        {/* World renderer component */}
-        <WorldRenderer />
-        
-        {/* Player's vehicle */}
-        <Vehicle />
-        
-        {/* Other players */}
-        <OtherPlayers />
-        
-        {/* Controls component renders joystick for mobile */}
-        <Controls />
-      </Suspense>
-    </>
-  );
 
   // Conditionally render desktop or mobile version
   if (!isMobile) {
@@ -156,7 +143,8 @@ export function Game() {
           camera={{ position: [0, 5, 10], fov: 60 }}
           style={{ width: '100%', height: '100%' }}
         >
-          <DesktopGameContent />
+          <CommonGameElements />
+          <DesktopVehicle />
         </Canvas>
       </KeyboardControls>
     );
@@ -169,7 +157,8 @@ export function Game() {
       camera={{ position: [0, 5, 10], fov: 60 }}
       style={{ width: '100%', height: '100%' }}
     >
-      <MobileGameContent />
+      <CommonGameElements />
+      <MobileVehicle />
     </Canvas>
   );
 }

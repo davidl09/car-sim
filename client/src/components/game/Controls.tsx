@@ -4,7 +4,7 @@ import { isMobileDevice } from '@/utils/deviceDetection';
 import { Joystick } from '../ui/Joystick';
 
 // Define a default empty controls state
-const defaultControlsState = {
+export const defaultControlsState = {
   forward: false,
   back: false,
   left: false,
@@ -14,8 +14,11 @@ const defaultControlsState = {
   cameraSwitch: false,
 };
 
-// Custom hook for desktop controls (uses KeyboardControls context)
-function useDesktopControls() {
+/**
+ * Desktop controls hook - ONLY use this when KeyboardControls provider is available
+ * This should never be called in the mobile component tree
+ */
+export function useDesktopControls() {
   const [, getKeyboardControls] = useKeyboardControls();
   
   return {
@@ -25,8 +28,10 @@ function useDesktopControls() {
   };
 }
 
-// Custom hook for mobile controls (touch-based)
-function useMobileControls() {
+/**
+ * Mobile controls hook - safe to use anywhere since it doesn't depend on React context
+ */
+export function useMobileControls() {
   // Store joystick controls in a ref to avoid re-renders
   const joystickControlsRef = useRef({...defaultControlsState});
   
@@ -57,32 +62,23 @@ function useMobileControls() {
   };
 }
 
-// Factory function to get the appropriate controls hook based on device type
-export function useControls() {
-  const [isMobile, setIsMobile] = useState(false);
-  
-  // Check if using mobile device
-  useEffect(() => {
-    setIsMobile(isMobileDevice());
-  }, []);
-  
-  // Use the appropriate controls based on device type
+// Mobile Controls component - specifically for mobile devices
+export function MobileControls() {
   const mobileControls = useMobileControls();
-  const desktopControls = useDesktopControls();
   
-  return isMobile ? mobileControls : desktopControls;
+  return <Joystick onControlsChange={mobileControls.updateJoystickControls} />;
 }
 
-// The Controls component renders the joystick for mobile or debugging info for desktop
-export function Controls() {
-  const { isMobile, updateJoystickControls, getControls } = useControls();
+// Desktop Controls component - specifically for desktop devices
+export function DesktopControls() {
+  const desktopControls = useDesktopControls();
   
   // Debug logging for development
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     
     const handleKeyEvents = () => {
-      const controls = getControls();
+      const controls = desktopControls.getControls();
       console.log('Controls:', controls);
     };
     
@@ -91,11 +87,7 @@ export function Controls() {
     return () => {
       clearInterval(intervalId);
     };
-  }, [getControls]);
-  
-  if (isMobile) {
-    return <Joystick onControlsChange={updateJoystickControls} />;
-  }
+  }, [desktopControls]);
   
   return null; // This is a "headless" component on desktop
 }
