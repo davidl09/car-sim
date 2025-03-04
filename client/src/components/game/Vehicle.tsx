@@ -22,9 +22,10 @@ const MAX_VELOCITY = 1.0; // Max velocity (200km/h)
 const MIN_FRICTION = 0.997; // Even less friction at low speeds (0.3% loss)
 const MAX_FRICTION = 0.996; // Less friction at high speeds (0.4% loss)
 const BRAKE_POWER = 0.92; // Brake strength (8% reduction per frame)
-const BASE_TURN_SPEED = 0.03; // Increased base turning speed 
+const BASE_TURN_SPEED = 0.035; // Increased base turning speed for tighter low-speed steering
 const MIN_TURN_MULTIPLIER = 0.25; // Minimum turning multiplier at high speeds
 const UPDATE_INTERVAL = 50; // How often to send updates (in ms)
+const OFF_ROAD_PENALTY = 0.75; // 25% speed penalty when off-road
 
 // Camera view types
 enum CameraView {
@@ -140,11 +141,19 @@ export function Vehicle() {
     const accelerationFactor = 1 - (speedRatio * speedRatio * 0.5); // More gradual taper using quadratic curve
     const currentAcceleration = BASE_ACCELERATION * accelerationFactor;
     
+    // Check if vehicle is on a road
+    const isOnRoad = window.isOnRoad ? 
+      window.isOnRoad({ x: vehicleRef.current.position.x, z: vehicleRef.current.position.z }) : 
+      true; // Default to true if function not available
+    
     // Apply acceleration - corrected direction (forward is positive Z)
+    // Apply off-road penalty if not on a road
+    const terrainMultiplier = isOnRoad ? 1.0 : OFF_ROAD_PENALTY;
+    
     if (forward) {
-      velocity.current.z += currentAcceleration;
+      velocity.current.z += currentAcceleration * terrainMultiplier;
     } else if (back) {
-      velocity.current.z -= currentAcceleration * 0.7; // Slightly less power in reverse
+      velocity.current.z -= currentAcceleration * 0.7 * terrainMultiplier; // Slightly less power in reverse
     }
     
     // Check if vehicle is moving (reuse the already calculated currentSpeed)
@@ -194,12 +203,15 @@ export function Vehicle() {
       velocity.current.multiplyScalar(BRAKE_POWER);
     }
     
+    // Limit velocity with terrain penalty
+    const maxVelocityWithTerrain = MAX_VELOCITY * (isOnRoad ? 1.0 : OFF_ROAD_PENALTY);
+    
     // Limit velocity
-    if (velocity.current.length() > MAX_VELOCITY) {
-      velocity.current.normalize().multiplyScalar(MAX_VELOCITY);
+    if (velocity.current.length() > maxVelocityWithTerrain) {
+      velocity.current.normalize().multiplyScalar(maxVelocityWithTerrain);
     }
     
-    // Apply variable friction based on speed
+    // Apply variable friction based on speed and terrain
     // Custom friction curve that allows reaching top speed
     // Start with very little friction, gradually increase with speed, but cap the max friction
     // This uses a custom curve to ensure we can reach max speed
@@ -211,6 +223,12 @@ export function Vehicle() {
     } else {
       // Even at top speeds, limit friction to allow maintaining max velocity
       frictionFactor = MAX_FRICTION;
+    }
+    
+    // Apply slightly more friction when off-road
+    if (!isOnRoad) {
+      // Reduce friction factor by an additional 0.2% when off-road
+      frictionFactor *= 0.998;
     }
     
     // Debug: Uncomment to monitor top speed

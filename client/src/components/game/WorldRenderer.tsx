@@ -5,6 +5,15 @@ import { useGameStore } from '@/store/gameStore';
 import { Building, Road, Tree } from 'shared/types/world';
 import { Vector3 as PlayerVector3 } from 'shared/types/player';
 
+// Extend window interface to support the road checking function
+declare global {
+  interface Window {
+    updateNearbyTrees?: (trees: Array<{position: PlayerVector3}>) => void;
+    isOnRoad?: (position: {x: number, z: number}) => boolean;
+    nearbyRoads?: Road[];
+  }
+}
+
 // Constants for world generation
 const CHUNK_SIZE = 256;
 const VISIBLE_CHUNKS = 3; // Number of chunks visible in each direction
@@ -92,57 +101,216 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
   const isSuburb = terrainType === 'suburb';
   
   // Generate buildings, trees, and roads based on chunk type
+  // First define the roads for collision detection with buildings
+  const roads = useMemo(() => {
+    const roads: Road[] = [];
+    
+    if (isCity) {
+      // City roads in a less dense grid pattern
+      for (let i = 0; i < CHUNK_SIZE; i += 64) { // Reduced density from 32 to 64
+        roads.push({
+          x1: x * CHUNK_SIZE,
+          z1: z * CHUNK_SIZE + i,
+          x2: x * CHUNK_SIZE + CHUNK_SIZE,
+          z2: z * CHUNK_SIZE + i,
+          width: 10 // Slightly wider roads
+        });
+        
+        roads.push({
+          x1: x * CHUNK_SIZE + i,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + i,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 10
+        });
+      }
+    } else if (isSuburb) {
+      // Suburb roads - less regular pattern with some curves
+      // Main roads - reduced to just one road for less density
+      roads.push({
+        x1: x * CHUNK_SIZE,
+        z1: z * CHUNK_SIZE + CHUNK_SIZE / 2, // Only one road in middle instead of two
+        x2: x * CHUNK_SIZE + CHUNK_SIZE,
+        z2: z * CHUNK_SIZE + CHUNK_SIZE / 2,
+        width: 8
+      });
+      
+      // Cross roads at irregular intervals - reduced from 3 to 2
+      for (let i = 0; i < 2; i++) {
+        const offset = seededRandom(x * 3000 + i, z * 3000) * CHUNK_SIZE * 0.8 + CHUNK_SIZE * 0.1;
+        roads.push({
+          x1: x * CHUNK_SIZE + offset,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + offset,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 7
+        });
+      }
+    } else {
+      // Country roads - now more interesting with occasional crossroads
+      // Main road
+      roads.push({
+        x1: x * CHUNK_SIZE,
+        z1: z * CHUNK_SIZE + CHUNK_SIZE / 2,
+        x2: x * CHUNK_SIZE + CHUNK_SIZE,
+        z2: z * CHUNK_SIZE + CHUNK_SIZE / 2,
+        width: 8
+      });
+      
+      // Occasional perpendicular roads in countryside (reduced chance - 1 in 4 instead of 1 in 3)
+      if (seededRandom(x * 4000, z * 4000) > 0.75) {
+        roads.push({
+          x1: x * CHUNK_SIZE + CHUNK_SIZE / 2,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + CHUNK_SIZE / 2,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 6 // Slightly narrower countryside crossing
+        });
+      }
+      
+      // Very occasional diagonal dirt roads (1 in 5 chance)
+      if (seededRandom(x * 5000, z * 5000) > 0.8) {
+        roads.push({
+          x1: x * CHUNK_SIZE,
+          z1: z * CHUNK_SIZE,
+          x2: x * CHUNK_SIZE + CHUNK_SIZE,
+          z2: z * CHUNK_SIZE + CHUNK_SIZE,
+          width: 6 // Wider dirt road to show center line
+        });
+      }
+    }
+    
+    return roads;
+  }, [x, z, isCity, seededRandom]);
+
+  // Helper function to check if a building would intersect with any road
+  const wouldIntersectRoad = (bx: number, bz: number, width: number, depth: number) => {
+    const buildingLeft = bx - width / 2;
+    const buildingRight = bx + width / 2;
+    const buildingTop = bz - depth / 2;
+    const buildingBottom = bz + depth / 2;
+    
+    // Check against each road
+    for (const road of roads) {
+      // Calculate road bounds with extra padding for safety
+      const padding = road.width / 2 + 2; // Road width/2 plus some extra space
+      
+      // For horizontal roads (x1 and x2 far apart, z1 and z2 close)
+      if (Math.abs(road.x2 - road.x1) > Math.abs(road.z2 - road.z1)) {
+        const roadLeft = Math.min(road.x1, road.x2);
+        const roadRight = Math.max(road.x1, road.x2);
+        const roadZ = (road.z1 + road.z2) / 2;
+        
+        // If building overlaps horizontally and is within road's vertical influence
+        if (buildingRight >= roadLeft && buildingLeft <= roadRight &&
+            buildingBottom >= roadZ - padding && buildingTop <= roadZ + padding) {
+          return true;
+        }
+      } 
+      // For vertical roads (z1 and z2 far apart, x1 and x2 close)
+      else {
+        const roadTop = Math.min(road.z1, road.z2);
+        const roadBottom = Math.max(road.z1, road.z2);
+        const roadX = (road.x1 + road.x2) / 2;
+        
+        // If building overlaps vertically and is within road's horizontal influence
+        if (buildingBottom >= roadTop && buildingTop <= roadBottom &&
+            buildingRight >= roadX - padding && buildingLeft <= roadX + padding) {
+          return true;
+        }
+      }
+      
+      // For diagonal roads, check distance from building center to road line
+      if (Math.abs(road.x2 - road.x1) > 0 && Math.abs(road.z2 - road.z1) > 0) {
+        // Calculate the distance from the building center to the road line
+        const A = road.z2 - road.z1;
+        const B = road.x1 - road.x2;
+        const C = road.x2 * road.z1 - road.x1 * road.z2;
+        
+        const distance = Math.abs(A * bx + B * bz + C) / Math.sqrt(A * A + B * B);
+        
+        // Check if the building is too close to the road
+        if (distance < (road.width / 2 + Math.max(width, depth) / 2)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  };
+
   const buildings = useMemo(() => {
     if (!isCity && !isSuburb) return [];
     
     const buildings: Building[] = [];
     
     // Generate building clusters rather than individual buildings
+    // Increase cluster count for more density
     const clusterCount = isCity 
-      ? Math.floor(seededRandom(x * 1000, z * 1000) * 5) + 3 // 3-8 clusters in cities
-      : Math.floor(seededRandom(x * 1000, z * 1000) * 3) + 1; // 1-4 clusters in suburbs
+      ? Math.floor(seededRandom(x * 1000, z * 1000) * 7) + 4 // 4-11 clusters in cities
+      : Math.floor(seededRandom(x * 1000, z * 1000) * 4) + 2; // 2-6 clusters in suburbs
     
     for (let c = 0; c < clusterCount; c++) {
-      // Define cluster center
+      // Define cluster center - make clusters smaller for denser building placement
       const clusterX = (seededRandom(x * 1000 + c, z * 1000) * CHUNK_SIZE * 0.8) + (x * CHUNK_SIZE) + CHUNK_SIZE * 0.1;
       const clusterZ = (seededRandom(x * 1000, z * 1000 + c) * CHUNK_SIZE * 0.8) + (z * CHUNK_SIZE) + CHUNK_SIZE * 0.1;
       
-      // Buildings per cluster
+      // Increase buildings per cluster for denser clusters
       const buildingsInCluster = isCity 
-        ? Math.floor(seededRandom(clusterX, clusterZ) * 6) + 3 // 3-9 buildings per city cluster
-        : Math.floor(seededRandom(clusterX, clusterZ) * 3) + 2; // 2-5 buildings per suburb cluster
+        ? Math.floor(seededRandom(clusterX, clusterZ) * 8) + 4 // 4-12 buildings per city cluster
+        : Math.floor(seededRandom(clusterX, clusterZ) * 4) + 3; // 3-7 buildings per suburb cluster
 
-      // Cluster density - how close buildings are to each other
-      const clusterRadius = isCity ? 20 : 30; // City clusters are denser
+      // Make clusters denser
+      const clusterRadius = isCity ? 15 : 20; // Smaller radius = denser clusters
       
       for (let i = 0; i < buildingsInCluster; i++) {
-        // Position buildings in a roughly circular pattern around cluster center
-        const angle = seededRandom(clusterX + i, clusterZ) * Math.PI * 2;
-        const distance = seededRandom(clusterX, clusterZ + i) * clusterRadius;
+        // Try to place a building up to 5 times if it intersects with a road
+        let bx, bz, width, depth;
+        let attempts = 0;
+        let validPosition = false;
         
-        const bx = clusterX + Math.cos(angle) * distance;
-        const bz = clusterZ + Math.sin(angle) * distance;
+        while (attempts < 5 && !validPosition) {
+          // Position buildings in a roughly circular pattern around cluster center
+          const angle = seededRandom(clusterX + i + attempts * 100, clusterZ) * Math.PI * 2;
+          const distance = seededRandom(clusterX, clusterZ + i + attempts * 100) * clusterRadius;
+          
+          bx = clusterX + Math.cos(angle) * distance;
+          bz = clusterZ + Math.sin(angle) * distance;
+          
+          // Height varies by area type
+          const height = isCity
+            ? Math.floor(seededRandom(bx, bz) * 10) + 3 // Taller buildings in cities (3-13 units)
+            : Math.floor(seededRandom(bx, bz) * 3) + 1; // Lower buildings in suburbs (1-4 units)
+          
+          width = Math.floor(seededRandom(bx + 1, bz) * 6) + 4; // 4-10 units wide
+          depth = Math.floor(seededRandom(bx, bz + 1) * 6) + 4; // 4-10 units deep
+          
+          // Check if this building would intersect with any road
+          validPosition = !wouldIntersectRoad(bx, bz, width, depth);
+          
+          attempts++;
+        }
         
-        // Height varies by area type
-        const height = isCity
-          ? Math.floor(seededRandom(bx, bz) * 10) + 3 // Taller buildings in cities (3-13 units)
-          : Math.floor(seededRandom(bx, bz) * 3) + 1; // Lower buildings in suburbs (1-4 units)
-        
-        const width = Math.floor(seededRandom(bx + 1, bz) * 6) + 4; // 4-10 units wide
-        const depth = Math.floor(seededRandom(bx, bz + 1) * 6) + 4; // 4-10 units deep
-        
-        buildings.push({
-          x: bx,
-          z: bz,
-          height,
-          width,
-          depth
-        });
+        // Only add the building if we found a valid position
+        if (validPosition) {
+          // Recalculate height based on final position
+          const height = isCity
+            ? Math.floor(seededRandom(bx!, bz!) * 10) + 3
+            : Math.floor(seededRandom(bx!, bz!) * 3) + 1;
+          
+          buildings.push({
+            x: bx!,
+            z: bz!,
+            height,
+            width: width!,
+            depth: depth!
+          });
+        }
       }
     }
     
     return buildings;
-  }, [x, z, isCity, seededRandom]);
+  }, [x, z, isCity, seededRandom, roads, wouldIntersectRoad]);
   
   const trees = useMemo(() => {
     // No trees in cities, fewer in suburbs
@@ -252,9 +420,61 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     return roads;
   }, [x, z, isCity]);
   
-  // Share tree data with the Vehicle component for collision detection
+  // Function to check if a point is on a road
+  const isPointOnRoad = (x: number, z: number) => {
+    for (const road of roads) {
+      // Road bounds with padding
+      const padding = road.width / 2;
+      
+      // For horizontal roads
+      if (Math.abs(road.x2 - road.x1) > Math.abs(road.z2 - road.z1)) {
+        const roadLeft = Math.min(road.x1, road.x2);
+        const roadRight = Math.max(road.x1, road.x2);
+        const roadZ = (road.z1 + road.z2) / 2;
+        
+        if (x >= roadLeft && x <= roadRight && 
+            z >= roadZ - padding && z <= roadZ + padding) {
+          return true;
+        }
+      } 
+      // For vertical roads
+      else {
+        const roadTop = Math.min(road.z1, road.z2);
+        const roadBottom = Math.max(road.z1, road.z2);
+        const roadX = (road.x1 + road.x2) / 2;
+        
+        if (z >= roadTop && z <= roadBottom && 
+            x >= roadX - padding && x <= roadX + padding) {
+          return true;
+        }
+      }
+      
+      // For diagonal roads
+      if (Math.abs(road.x2 - road.x1) > 0 && Math.abs(road.z2 - road.z1) > 0) {
+        // Calculate the distance from the point to the road line
+        const A = road.z2 - road.z1;
+        const B = road.x1 - road.x2;
+        const C = road.x2 * road.z1 - road.x1 * road.z2;
+        
+        const distance = Math.abs(A * x + B * z + C) / Math.sqrt(A * A + B * B);
+        
+        // Check if the point is close enough to the road
+        if (distance < padding) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  };
+
+  // Share tree data and road information with the Vehicle component
   useEffect(() => {
-    // Check if the update function exists (registered by Vehicle component)
+    // Register the road checking function
+    window.isOnRoad = (position) => isPointOnRoad(position.x, position.z);
+    window.nearbyRoads = roads;
+    
+    // Share tree data for collision detection
     if (window.updateNearbyTrees) {
       const treeData = trees.map(tree => ({
         position: {
@@ -266,7 +486,13 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       
       window.updateNearbyTrees(treeData);
     }
-  }, [trees]);
+    
+    return () => {
+      // Clean up when component unmounts
+      delete window.isOnRoad;
+      delete window.nearbyRoads;
+    };
+  }, [trees, roads, isPointOnRoad]);
   
   return (
     <group>
