@@ -120,7 +120,6 @@ function MobileVehicle() {
   return (
     <Suspense fallback={<LoadingPlaceholder />}>
       <Vehicle controlType="mobile" />
-      <MobileControls />
     </Suspense>
   );
 }
@@ -152,13 +151,18 @@ export function Game() {
   
   // Mobile version without KeyboardControls wrapper
   return (
-    <Canvas
-      shadows
-      camera={{ position: [0, 5, 10], fov: 60 }}
-      style={{ width: '100%', height: '100%' }}
-    >
-      <CommonGameElements />
-      <MobileVehicle />
-    </Canvas>
+    <>
+      <Canvas
+        shadows
+        camera={{ position: [0, 5, 10], fov: 60 }}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <CommonGameElements />
+        <MobileVehicle />
+      </Canvas>
+      
+      {/* Render UI controls outside the Canvas */}
+      <MobileControls />
+    </>
   );
 }
