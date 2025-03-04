@@ -8,6 +8,7 @@ import { collisionService } from '@/services/collisionService';
 import { useGameStore } from '@/store/gameStore';
 import { Vector3 as PlayerVector3 } from 'shared/types/player';
 import { hasSpawnProtection } from '@/utils/collisionUtils';
+import { useControls } from './Controls';
 
 // Extend window interface to support the tree data function
 declare global {
@@ -56,13 +57,17 @@ export function Vehicle() {
   // Track if engine is running
   const engineRunningRef = useRef<boolean>(false);
   
-  // Get keyboard controls and subscribe to camera switch
-  const [subscribeKeys, getKeys] = useKeyboardControls();
+  // Get controls based on device type
+  const { getControls, isMobile } = useControls();
+  // Keep keyboard controls for non-mobile devices 
+  const [subscribeKeys] = useKeyboardControls();
   
   // We'll handle billboard effect in the main useFrame loop instead to avoid potential conflicts
   
-  // Subscribe to camera switch key
+  // Subscribe to camera switch key if using keyboard
   useEffect(() => {
+    if (isMobile) return; // Skip for mobile devices (will use joystick camera button)
+    
     // Handle camera view switching when 'c' is pressed
     const unsubscribe = subscribeKeys(
       (state) => state.cameraSwitch,
@@ -95,7 +100,47 @@ export function Vehicle() {
     return () => {
       unsubscribe();
     };
-  }, [subscribeKeys]);
+  }, [subscribeKeys, isMobile]);
+  
+  // Handle camera switch for mobile controls (separate from frame loop for better performance)
+  useEffect(() => {
+    if (!isMobile) return; // Skip for non-mobile devices
+    
+    // Check if the current frame has a camera switch request
+    const checkCameraSwitch = () => {
+      const { cameraSwitch } = getControls();
+      
+      if (cameraSwitch && !cameraSwitchCooldown.current) {
+        // Switch camera view and apply cooldown to prevent rapid switching
+        cameraSwitchCooldown.current = true;
+        
+        // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
+        switch (cameraViewRef.current) {
+          case CameraView.REAR:
+            cameraViewRef.current = CameraView.FRONT;
+            break;
+          case CameraView.FRONT:
+            cameraViewRef.current = CameraView.FIRST_PERSON;
+            break;
+          case CameraView.FIRST_PERSON:
+            cameraViewRef.current = CameraView.REAR;
+            break;
+        }
+        
+        // Reset cooldown after 300ms to prevent accidental double-switches
+        setTimeout(() => {
+          cameraSwitchCooldown.current = false;
+        }, 300);
+      }
+    };
+    
+    // Set up a frame check for camera switch requests
+    const intervalId = setInterval(checkCameraSwitch, 100);
+    
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [isMobile, getControls]);
   
   // Setup engine sound management
   useEffect(() => {
@@ -122,14 +167,14 @@ export function Vehicle() {
   useFrame(() => {
     if (!vehicleRef.current || !playerState || !playerId) return;
     
-    // Get current input state
+    // Get current input state (from keyboard or joystick)
     const { 
       forward, 
       back, 
       left, 
       right, 
       brake
-    } = getKeys();
+    } = getControls();
     
     // Calculate speed (magnitude of velocity)
     const currentSpeed = velocity.current.length();

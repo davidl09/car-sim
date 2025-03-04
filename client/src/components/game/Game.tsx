@@ -1,14 +1,15 @@
 import { Canvas } from '@react-three/fiber';
 import { KeyboardControls, Sky, Stats } from '@react-three/drei';
 import * as THREE from 'three';
-import { Suspense, useRef } from 'react';
+import { Suspense, useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { WorldRenderer } from './WorldRenderer';
 import { Vehicle } from './Vehicle';
 import { OtherPlayers } from './OtherPlayers';
 import { LoadingPlaceholder } from '../ui/LoadingPlaceholder';
-// import { Controls } from './Controls';
+import { Controls } from './Controls';
 import { useGameStore } from '@/store/gameStore';
+import { isMobileDevice } from '@/utils/deviceDetection';
 
 // Define keyboard controls for the game
 export enum GameControls {
@@ -84,31 +85,62 @@ function EnvironmentFollower() {
 }
 
 export function Game() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Check if device is mobile
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
+  
+  // Game content to render inside the canvas
+  const GameContent = () => (
+    <>
+      <Stats />
+      <Suspense fallback={<LoadingPlaceholder />}>
+        {/* Environment elements that follow the player */}
+        <EnvironmentFollower />
+        
+        {/* Ambient light for the scene */}
+        <ambientLight intensity={0.8} />
+        
+        {/* World renderer component */}
+        <WorldRenderer />
+        
+        {/* Player's vehicle */}
+        <Vehicle />
+        
+        {/* Other players */}
+        <OtherPlayers />
+        
+        {/* Add Controls component which will render joystick for mobile */}
+        <Controls />
+      </Suspense>
+    </>
+  );
+
+  // Conditionally wrap with KeyboardControls for desktop or render directly for mobile
+  if (!isMobile) {
+    return (
+      <KeyboardControls map={keyboardMap}>
+        <Canvas
+          shadows
+          camera={{ position: [0, 5, 10], fov: 60 }}
+          style={{ width: '100%', height: '100%' }}
+        >
+          <GameContent />
+        </Canvas>
+      </KeyboardControls>
+    );
+  }
+  
+  // For mobile, render without KeyboardControls wrapper
   return (
-    <KeyboardControls map={keyboardMap}>
-      <Canvas
-        shadows
-        camera={{ position: [0, 5, 10], fov: 60 }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        <Stats />
-        <Suspense fallback={<LoadingPlaceholder />}>
-          {/* Environment elements that follow the player */}
-          <EnvironmentFollower />
-          
-          {/* Ambient light for the scene */}
-          <ambientLight intensity={0.8} />
-          
-          {/* World renderer component */}
-          <WorldRenderer />
-          
-          {/* Player's vehicle */}
-          <Vehicle />
-          
-          {/* Other players */}
-          <OtherPlayers />
-        </Suspense>
-      </Canvas>
-    </KeyboardControls>
+    <Canvas
+      shadows
+      camera={{ position: [0, 5, 10], fov: 60 }}
+      style={{ width: '100%', height: '100%' }}
+    >
+      <GameContent />
+    </Canvas>
   );
 }
