@@ -38,6 +38,11 @@ export function Vehicle() {
   const vehicleRef = useRef<Group>(null);
   const { camera } = useThree();
   
+  // Debug state refs
+  const isOnRoadRef = useRef<boolean>(false);
+  const terrainMultiplierRef = useRef<number>(1.0);
+  const speedRef = useRef<number>(0);
+  
   // Get the player state from the game store
   const playerId = useGameStore((state) => state.playerId);
   const playerState = useGameStore((state) => 
@@ -133,6 +138,7 @@ export function Vehicle() {
     
     // Calculate speed (magnitude of velocity)
     const currentSpeed = velocity.current.length();
+    speedRef.current = currentSpeed;
     const speedRatio = Math.min(currentSpeed / MAX_VELOCITY, 1); // Value between 0-1
     
     // Calculate variable acceleration based on current speed
@@ -151,6 +157,9 @@ export function Vehicle() {
     // Check if vehicle is on a road
     const isOnRoad = window.isOnRoad ? window.isOnRoad(vehiclePosition) : true;
     
+    // Store the value for our debug indicator
+    isOnRoadRef.current = isOnRoad;
+    
     // Uncomment for debugging:
     // if (Math.random() < 0.01) { // Only show this occasionally to avoid spamming the console
     //   console.log(`Vehicle at (${vehiclePosition.x.toFixed(1)},${vehiclePosition.z.toFixed(1)}) is ${isOnRoad ? 'ON' : 'OFF'} road`);
@@ -159,6 +168,8 @@ export function Vehicle() {
     // Apply acceleration - corrected direction (forward is positive Z)
     // Apply off-road penalty if not on a road
     const terrainMultiplier = isOnRoad ? 1.0 : OFF_ROAD_PENALTY;
+    // Store for debug display
+    terrainMultiplierRef.current = terrainMultiplier;
     
     if (forward) {
       velocity.current.z += currentAcceleration * terrainMultiplier;
@@ -438,6 +449,66 @@ export function Vehicle() {
     
     return () => clearInterval(pulseInterval);
   }, [hasProtection]);
+  
+  // Create HTML overlay for road status debug indicator
+  useEffect(() => {
+    // Create road status indicator
+    const indicator = document.createElement('div');
+    indicator.id = 'road-status-indicator';
+    indicator.style.position = 'fixed';
+    indicator.style.top = '10px';
+    indicator.style.left = '10px';
+    indicator.style.padding = '10px';
+    indicator.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    indicator.style.color = 'white';
+    indicator.style.fontFamily = 'monospace';
+    indicator.style.fontSize = '16px';
+    indicator.style.borderRadius = '5px';
+    indicator.style.zIndex = '1000';
+    document.body.appendChild(indicator);
+    
+    // Update the indicator every frame
+    const updateIndicator = () => {
+      if (indicator) {
+        // Get vehicle position for display
+        let positionText = 'Unknown';
+        let roadStatus = 'Unknown';
+        
+        if (vehicleRef.current) {
+          const pos = vehicleRef.current.position;
+          positionText = `X: ${pos.x.toFixed(1)}, Z: ${pos.z.toFixed(1)}`;
+          roadStatus = isOnRoadRef.current ? 'ON ROAD' : 'OFF ROAD';
+        }
+        
+        // Check if the road detection function is available
+        const isRoadDetectionAvailable = window.isOnRoad !== undefined;
+        
+        // Calculate speed in km/h for display
+        const speedKmh = speedRef.current * 200;
+        
+        indicator.innerHTML = `
+          <div>Position: ${positionText}</div>
+          <div>Status: <span style="color: ${isOnRoadRef.current ? 'lime' : 'red'}">${roadStatus}</span></div>
+          <div>Speed: ${speedKmh.toFixed(1)} km/h</div>
+          <div>Speed Multiplier: ${terrainMultiplierRef.current.toFixed(2)}x</div>
+          <div>Speed Penalty: ${isOnRoadRef.current ? 'None' : '25%'}</div>
+          <div>Road Detection: <span style="color: ${isRoadDetectionAvailable ? 'lime' : 'red'}">${isRoadDetectionAvailable ? 'AVAILABLE' : 'NOT AVAILABLE'}</span></div>
+          <div>Road Count: ${window.nearbyRoads ? window.nearbyRoads.length : 'Unknown'}</div>
+        `;
+      }
+      
+      requestAnimationFrame(updateIndicator);
+    };
+    
+    updateIndicator();
+    
+    // Clean up
+    return () => {
+      if (indicator && indicator.parentNode) {
+        indicator.parentNode.removeChild(indicator);
+      }
+    };
+  }, []);
   
   return (
     <group ref={vehicleRef}>

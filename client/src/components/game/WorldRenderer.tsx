@@ -443,6 +443,29 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       {chunkRoads.map((road, index) => (
         <RoadMesh key={`road-${index}`} road={road} />
       ))}
+      
+      {/* Debug visualization for road detection zones - shows the actual detection bounds */}
+      {chunkRoads.map((road, index) => (
+        <group key={`road-debug-${index}`}>
+          <mesh
+            position={[(road.x1 + road.x2) / 2, 0.1, (road.z1 + road.z2) / 2]}
+            rotation={[-Math.PI / 2, 0, Math.atan2(road.z2 - road.z1, road.x2 - road.x1)]}
+          >
+            <planeGeometry 
+              args={[
+                Math.sqrt(Math.pow(road.x2 - road.x1, 2) + Math.pow(road.z2 - road.z1, 2)),
+                road.width
+              ]} 
+            />
+            <meshBasicMaterial 
+              color="#00ff00" 
+              transparent={true}
+              opacity={0.3}
+              wireframe={true}
+            />
+          </mesh>
+        </group>
+      ))}
     </group>
   );
 }
