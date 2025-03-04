@@ -18,6 +18,68 @@ declare global {
 const CHUNK_SIZE = 256;
 const VISIBLE_CHUNKS = 3; // Number of chunks visible in each direction
 
+// Global road registry to aggregate roads from all chunks
+let allRoads: Road[] = [];
+
+// Global isOnRoad function that checks all roads
+const globalIsOnRoad = (position: {x: number, z: number}): boolean => {
+  for (const road of allRoads) {
+    // Road bounds with padding
+    const padding = road.width / 2;
+    
+    // For horizontal roads (x1 and x2 are far apart, z1 and z2 are close)
+    if (Math.abs(road.x2 - road.x1) > Math.abs(road.z2 - road.z1)) {
+      const roadLeft = Math.min(road.x1, road.x2);
+      const roadRight = Math.max(road.x1, road.x2);
+      const roadZ = (road.z1 + road.z2) / 2;
+      
+      if (position.x >= roadLeft && position.x <= roadRight && 
+          position.z >= roadZ - padding && position.z <= roadZ + padding) {
+        return true;
+      }
+    } 
+    // For vertical roads (z1 and z2 are far apart, x1 and x2 are close)
+    else if (Math.abs(road.z2 - road.z1) > Math.abs(road.x2 - road.x1)) {
+      const roadTop = Math.min(road.z1, road.z2);
+      const roadBottom = Math.max(road.z1, road.z2);
+      const roadX = (road.x1 + road.x2) / 2;
+      
+      if (position.z >= roadTop && position.z <= roadBottom && 
+          position.x >= roadX - padding && position.x <= roadX + padding) {
+        return true;
+      }
+    }
+    // For diagonal roads - road is neither primarily horizontal or vertical
+    else if (Math.abs(road.x2 - road.x1) > 0 && Math.abs(road.z2 - road.z1) > 0) {
+      // Calculate the distance from the point to the road line
+      const A = road.z2 - road.z1;
+      const B = road.x1 - road.x2;
+      const C = road.x2 * road.z1 - road.x1 * road.z2;
+      
+      // Make sure we're within the bounds of the road segment, not just the infinite line
+      const roadMinX = Math.min(road.x1, road.x2);
+      const roadMaxX = Math.max(road.x1, road.x2);
+      const roadMinZ = Math.min(road.z1, road.z2);
+      const roadMaxZ = Math.max(road.z1, road.z2);
+      
+      // Check if point is within the bounding box of the road first
+      if (position.x >= roadMinX - padding && position.x <= roadMaxX + padding &&
+          position.z >= roadMinZ - padding && position.z <= roadMaxZ + padding) {
+        
+        // Then check the actual distance to the line
+        const distance = Math.abs(A * position.x + B * position.z + C) / Math.sqrt(A * A + B * B);
+        
+        // Check if the point is close enough to the road
+        if (distance < padding) {
+          return true;
+        }
+      }
+    }
+  }
+  
+  return false;
+};
+
 export function WorldRenderer() {
   //const { camera } = useThree();
   const worldSeed = useGameStore((state) => state.worldSeed);
@@ -25,6 +87,19 @@ export function WorldRenderer() {
   const playerPosition = useGameStore((state) => 
     playerId ? state.players[playerId]?.position : null
   );
+  
+  // Register the global road detection function once
+  useEffect(() => {
+    window.isOnRoad = globalIsOnRoad;
+    window.nearbyRoads = allRoads;
+    
+    return () => {
+      // Clean up when component unmounts
+      delete window.isOnRoad;
+      delete window.nearbyRoads;
+      allRoads = [];
+    };
+  }, []);
 
   // Track loaded chunks
   //const loadedChunks = useRef<Record<string, boolean>>({});
@@ -401,11 +476,29 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     return false;
   };
 
-  // Share tree data and road information with the Vehicle component
+  // Share tree data and road information with the global registry
   useEffect(() => {
-    // Register the road checking function
-    window.isOnRoad = (position) => isPointOnRoad(position.x, position.z);
-    window.nearbyRoads = chunkRoads;
+    // Add this chunk's roads to the global road registry
+    // First, generate a unique key for each road in this chunk to avoid duplicates
+    const roadKeys: Record<string, boolean> = {};
+    
+    // Clear out any previously registered roads from this chunk
+    // We need to identify roads from this specific chunk to avoid removing roads from other chunks
+    // Create chunk identifier string
+    const chunkId = `chunk_${x}_${z}`;
+    
+    // Filter out roads that belonged to this chunk
+    allRoads = allRoads.filter(road => (road as any).chunkId !== chunkId);
+    
+    // Add the current chunk's roads with identifiers
+    chunkRoads.forEach(road => {
+      // Add a chunkId property to identify which chunk this road belongs to
+      const roadWithChunkId = { ...road, chunkId } as Road & { chunkId: string };
+      allRoads.push(roadWithChunkId);
+    });
+    
+    // Update the global reference for debugging
+    window.nearbyRoads = allRoads;
     
     // Share tree data for collision detection
     if (window.updateNearbyTrees) {
@@ -420,12 +513,13 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       window.updateNearbyTrees(treeData);
     }
     
+    // No need to clean up as we're not overriding the global isOnRoad function anymore
     return () => {
-      // Clean up when component unmounts
-      delete window.isOnRoad;
-      delete window.nearbyRoads;
+      // When a chunk unmounts, remove its roads from the global registry
+      allRoads = allRoads.filter(road => (road as any).chunkId !== chunkId);
+      window.nearbyRoads = allRoads;
     };
-  }, [trees, chunkRoads, isPointOnRoad]);
+  }, [trees, chunkRoads, x, z]);
   
   return (
     <group>
