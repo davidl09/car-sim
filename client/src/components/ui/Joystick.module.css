@@ -11,6 +11,7 @@
   -webkit-user-select: none;
   user-select: none;
   z-index: 100;
+  pointer-events: auto;
 }
 
 .joystickKnob {
@@ -42,6 +43,7 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  pointer-events: auto;
 }
 
 .throttleUp {
@@ -90,6 +92,7 @@
   align-items: center;
   font-weight: bold;
   color: white;
+  pointer-events: auto;
 }
 
 .cameraButton {
@@ -107,6 +110,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  pointer-events: auto;
 }
 
 .cameraButton svg {

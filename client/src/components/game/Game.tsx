@@ -151,7 +151,7 @@ export function Game() {
   
   // Mobile version without KeyboardControls wrapper
   return (
-    <>
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Canvas
         shadows
         camera={{ position: [0, 5, 10], fov: 60 }}
@@ -161,8 +161,10 @@ export function Game() {
         <MobileVehicle />
       </Canvas>
       
-      {/* Render UI controls outside the Canvas */}
-      <MobileControls />
-    </>
+      {/* Render UI controls outside the Canvas but above it */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, pointerEvents: 'none' }}>
+        <MobileControls />
+      </div>
+    </div>
   );
 }
