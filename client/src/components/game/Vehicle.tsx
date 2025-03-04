@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useKeyboardControls } from '@react-three/drei';
 import { Vector3, Group } from 'three';
 import { socketService } from '@/services/socketService';
 import { audioService } from '@/services/audioService';

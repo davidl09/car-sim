@@ -1,6 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useKeyboardControls } from '@react-three/drei';
-import { isMobileDevice } from '@/utils/deviceDetection';
 import { Joystick } from '../ui/Joystick';
 
 // Define a default empty controls state
