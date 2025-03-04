@@ -142,9 +142,19 @@ export function Vehicle() {
     const currentAcceleration = BASE_ACCELERATION * accelerationFactor;
     
     // Check if vehicle is on a road
-    const isOnRoad = window.isOnRoad ? 
-      window.isOnRoad({ x: vehicleRef.current.position.x, z: vehicleRef.current.position.z }) : 
-      true; // Default to true if function not available
+    // We need to properly forward the vehicle position to the road check function
+    const vehiclePosition = {
+      x: vehicleRef.current.position.x,
+      z: vehicleRef.current.position.z
+    };
+    
+    // Check if vehicle is on a road
+    const isOnRoad = window.isOnRoad ? window.isOnRoad(vehiclePosition) : true;
+    
+    // Uncomment for debugging:
+    // if (Math.random() < 0.01) { // Only show this occasionally to avoid spamming the console
+    //   console.log(`Vehicle at (${vehiclePosition.x.toFixed(1)},${vehiclePosition.z.toFixed(1)}) is ${isOnRoad ? 'ON' : 'OFF'} road`);
+    // }
     
     // Apply acceleration - corrected direction (forward is positive Z)
     // Apply off-road penalty if not on a road

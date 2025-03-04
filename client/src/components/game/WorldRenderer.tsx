@@ -247,7 +247,7 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
     // Generate building clusters rather than individual buildings
     // Increase cluster count for more density
     const clusterCount = isCity 
-      ? Math.floor(seededRandom(x * 1000, z * 1000) * 7) + 4 // 4-11 clusters in cities
+      ? Math.floor(seededRandom(x * 1000, z * 1000) * 8) + 6 // 6-14 clusters in cities (significantly more)
       : Math.floor(seededRandom(x * 1000, z * 1000) * 4) + 2; // 2-6 clusters in suburbs
     
     for (let c = 0; c < clusterCount; c++) {
@@ -257,11 +257,11 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
       
       // Increase buildings per cluster for denser clusters
       const buildingsInCluster = isCity 
-        ? Math.floor(seededRandom(clusterX, clusterZ) * 8) + 4 // 4-12 buildings per city cluster
-        : Math.floor(seededRandom(clusterX, clusterZ) * 4) + 3; // 3-7 buildings per suburb cluster
+        ? Math.floor(seededRandom(clusterX, clusterZ) * 12) + 8 // 8-20 buildings per city cluster (much denser)
+        : Math.floor(seededRandom(clusterX, clusterZ) * 5) + 4; // 4-9 buildings per suburb cluster
 
       // Make clusters denser
-      const clusterRadius = isCity ? 15 : 20; // Smaller radius = denser clusters
+      const clusterRadius = isCity ? 25 : 30; // Increased cluster spread to allow for larger buildings
       
       for (let i = 0; i < buildingsInCluster; i++) {
         // Try to place a building up to 5 times if it intersects with a road
@@ -277,8 +277,9 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
           bx = clusterX + Math.cos(angle) * distance;
           bz = clusterZ + Math.sin(angle) * distance;
           
-          width = Math.floor(seededRandom(bx + 1, bz) * 6) + 4; // 4-10 units wide
-          depth = Math.floor(seededRandom(bx, bz + 1) * 6) + 4; // 4-10 units deep
+          // Much larger buildings - up to 5x larger
+          width = Math.floor(seededRandom(bx + 1, bz) * 20) + 8; // 8-28 units wide
+          depth = Math.floor(seededRandom(bx, bz + 1) * 20) + 8; // 8-28 units deep
           
           // Check if this building would intersect with any road
           validPosition = !wouldIntersectRoad(bx, bz, width, depth);
@@ -288,10 +289,10 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
         
         // Only add the building if we found a valid position
         if (validPosition) {
-          // Recalculate height based on final position
+          // Recalculate height based on final position - make buildings much taller
           const height = isCity
-            ? Math.floor(seededRandom(bx!, bz!) * 10) + 3
-            : Math.floor(seededRandom(bx!, bz!) * 3) + 1;
+            ? Math.floor(seededRandom(bx!, bz!) * 25) + 5 // 5-30 units tall in cities (much taller)
+            : Math.floor(seededRandom(bx!, bz!) * 10) + 2; // 2-12 units tall in suburbs
           
           buildings.push({
             x: bx!,
@@ -337,11 +338,14 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
   
   // Function to check if a point is on a road
   const isPointOnRoad = (x: number, z: number) => {
+    // Debug console log
+    // console.log(`Checking if point ${x.toFixed(1)},${z.toFixed(1)} is on road among ${chunkRoads.length} roads`);
+    
     for (const road of chunkRoads) {
       // Road bounds with padding
       const padding = road.width / 2;
       
-      // For horizontal roads
+      // For horizontal roads (x1 and x2 are far apart, z1 and z2 are close)
       if (Math.abs(road.x2 - road.x1) > Math.abs(road.z2 - road.z1)) {
         const roadLeft = Math.min(road.x1, road.x2);
         const roadRight = Math.max(road.x1, road.x2);
@@ -349,33 +353,47 @@ function Chunk({ x, z, seededRandom }: ChunkProps) {
         
         if (x >= roadLeft && x <= roadRight && 
             z >= roadZ - padding && z <= roadZ + padding) {
+          // console.log(`On horizontal road: ${roadLeft.toFixed(1)},${roadZ.toFixed(1)} to ${roadRight.toFixed(1)},${roadZ.toFixed(1)} with width ${road.width}`);
           return true;
         }
       } 
-      // For vertical roads
-      else {
+      // For vertical roads (z1 and z2 are far apart, x1 and x2 are close)
+      else if (Math.abs(road.z2 - road.z1) > Math.abs(road.x2 - road.x1)) {
         const roadTop = Math.min(road.z1, road.z2);
         const roadBottom = Math.max(road.z1, road.z2);
         const roadX = (road.x1 + road.x2) / 2;
         
         if (z >= roadTop && z <= roadBottom && 
             x >= roadX - padding && x <= roadX + padding) {
+          // console.log(`On vertical road: ${roadX.toFixed(1)},${roadTop.toFixed(1)} to ${roadX.toFixed(1)},${roadBottom.toFixed(1)} with width ${road.width}`);
           return true;
         }
       }
-      
-      // For diagonal roads
-      if (Math.abs(road.x2 - road.x1) > 0 && Math.abs(road.z2 - road.z1) > 0) {
+      // For diagonal roads - road is neither primarily horizontal or vertical
+      else if (Math.abs(road.x2 - road.x1) > 0 && Math.abs(road.z2 - road.z1) > 0) {
         // Calculate the distance from the point to the road line
         const A = road.z2 - road.z1;
         const B = road.x1 - road.x2;
         const C = road.x2 * road.z1 - road.x1 * road.z2;
         
-        const distance = Math.abs(A * x + B * z + C) / Math.sqrt(A * A + B * B);
+        // Make sure we're within the bounds of the road segment, not just the infinite line
+        const roadMinX = Math.min(road.x1, road.x2);
+        const roadMaxX = Math.max(road.x1, road.x2);
+        const roadMinZ = Math.min(road.z1, road.z2);
+        const roadMaxZ = Math.max(road.z1, road.z2);
         
-        // Check if the point is close enough to the road
-        if (distance < padding) {
-          return true;
+        // Check if point is within the bounding box of the road first
+        if (x >= roadMinX - padding && x <= roadMaxX + padding &&
+            z >= roadMinZ - padding && z <= roadMaxZ + padding) {
+          
+          // Then check the actual distance to the line
+          const distance = Math.abs(A * x + B * z + C) / Math.sqrt(A * A + B * B);
+          
+          // Check if the point is close enough to the road
+          if (distance < padding) {
+            // console.log(`On diagonal road with distance ${distance.toFixed(2)} < padding ${padding.toFixed(2)}`);
+            return true;
+          }
         }
       }
     }
