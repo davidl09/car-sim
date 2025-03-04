@@ -3,35 +3,37 @@ import { useKeyboardControls } from '@react-three/drei';
 import { isMobileDevice } from '@/utils/deviceDetection';
 import { Joystick } from '../ui/Joystick';
 
-// Custom hook to manage controls state whether from keyboard or joystick
-export function useControls() {
+// Define a default empty controls state
+const defaultControlsState = {
+  forward: false,
+  back: false,
+  left: false,
+  right: false,
+  brake: false,
+  jump: false,
+  cameraSwitch: false,
+};
+
+// Custom hook for desktop controls (uses KeyboardControls context)
+function useDesktopControls() {
   const [, getKeyboardControls] = useKeyboardControls();
-  const [isMobile, setIsMobile] = useState(false);
   
+  return {
+    getControls: getKeyboardControls,
+    updateJoystickControls: () => {}, // No-op for desktop
+    isMobile: false,
+  };
+}
+
+// Custom hook for mobile controls (touch-based)
+function useMobileControls() {
   // Store joystick controls in a ref to avoid re-renders
-  const joystickControlsRef = useRef({
-    forward: false,
-    back: false,
-    left: false,
-    right: false,
-    brake: false,
-    jump: false,
-    cameraSwitch: false,
-  });
+  const joystickControlsRef = useRef({...defaultControlsState});
   
-  // Check if using mobile device
-  useEffect(() => {
-    setIsMobile(isMobileDevice());
-  }, []);
-  
-  // Get the current controls state depending on device type
+  // Get the current controls state
   const getControls = useCallback(() => {
-    if (isMobile) {
-      return joystickControlsRef.current;
-    } else {
-      return getKeyboardControls();
-    }
-  }, [isMobile, getKeyboardControls]);
+    return joystickControlsRef.current;
+  }, []);
   
   // Callback to update joystick controls
   const updateJoystickControls = useCallback((controls: {
@@ -49,10 +51,26 @@ export function useControls() {
   }, []);
   
   return {
-    isMobile,
+    isMobile: true,
     getControls,
     updateJoystickControls,
   };
+}
+
+// Factory function to get the appropriate controls hook based on device type
+export function useControls() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Check if using mobile device
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
+  
+  // Use the appropriate controls based on device type
+  const mobileControls = useMobileControls();
+  const desktopControls = useDesktopControls();
+  
+  return isMobile ? mobileControls : desktopControls;
 }
 
 // The Controls component renders the joystick for mobile or debugging info for desktop

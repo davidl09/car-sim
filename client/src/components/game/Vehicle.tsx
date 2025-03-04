@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useKeyboardControls } from '@react-three/drei';
 import { Vector3, Group } from 'three';
 import { socketService } from '@/services/socketService';
 import { audioService } from '@/services/audioService';
@@ -57,53 +56,51 @@ export function Vehicle() {
   // Track if engine is running
   const engineRunningRef = useRef<boolean>(false);
   
-  // Get controls based on device type
+  // Get controls based on device type - this is safe now because the hook implementation
+  // is structured to avoid conditional hook calls
   const { getControls, isMobile } = useControls();
-  
-  // Only use keyboard controls when not on mobile to avoid context errors
-  // Create a dummy function for mobile that will be used as a placeholder
-  const dummySubscribe = () => () => {};
-  const subscribeKeys = !isMobile ? useKeyboardControls()[0] : dummySubscribe;
   
   // We'll handle billboard effect in the main useFrame loop instead to avoid potential conflicts
   
-  // Subscribe to camera switch key if using keyboard
+  // Handle camera switch for desktop devices
   useEffect(() => {
-    if (isMobile) return; // Skip for mobile devices (will use joystick camera button)
-    
-    // Handle camera view switching when 'c' is pressed
-    const unsubscribe = subscribeKeys(
-      (state) => state.cameraSwitch,
-      (pressed) => {
-        if (pressed && !cameraSwitchCooldown.current) {
-          // Switch camera view and apply cooldown to prevent rapid switching
-          cameraSwitchCooldown.current = true;
-          
-          // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
-          switch (cameraViewRef.current) {
-            case CameraView.REAR:
-              cameraViewRef.current = CameraView.FRONT;
-              break;
-            case CameraView.FRONT:
-              cameraViewRef.current = CameraView.FIRST_PERSON;
-              break;
-            case CameraView.FIRST_PERSON:
-              cameraViewRef.current = CameraView.REAR;
-              break;
-          }
-          
-          // Reset cooldown after 300ms to prevent accidental double-switches
-          setTimeout(() => {
-            cameraSwitchCooldown.current = false;
-          }, 300);
+    if (isMobile) return; // Skip for mobile devices
+
+    // We can't directly use the hook in the component, so we need the keyboard events
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if the 'c' key was pressed
+      if (e.code === 'KeyC' && !cameraSwitchCooldown.current) {
+        // Switch camera view and apply cooldown to prevent rapid switching
+        cameraSwitchCooldown.current = true;
+        
+        // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
+        switch (cameraViewRef.current) {
+          case CameraView.REAR:
+            cameraViewRef.current = CameraView.FRONT;
+            break;
+          case CameraView.FRONT:
+            cameraViewRef.current = CameraView.FIRST_PERSON;
+            break;
+          case CameraView.FIRST_PERSON:
+            cameraViewRef.current = CameraView.REAR;
+            break;
         }
+        
+        // Reset cooldown after 300ms to prevent accidental double-switches
+        setTimeout(() => {
+          cameraSwitchCooldown.current = false;
+        }, 300);
       }
-    );
-    
-    return () => {
-      unsubscribe();
     };
-  }, [subscribeKeys, isMobile]);
+    
+    // Add event listener for keyboard events
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMobile]);
   
   // Handle camera switch for mobile controls (separate from frame loop for better performance)
   useEffect(() => {

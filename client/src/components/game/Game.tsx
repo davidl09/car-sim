@@ -92,8 +92,10 @@ export function Game() {
     setIsMobile(isMobileDevice());
   }, []);
   
-  // Game content to render inside the canvas
-  const GameContent = () => (
+  // Game content components separated for desktop and mobile to avoid hooks being called conditionally
+  
+  // Desktop version uses keyboard controls
+  const DesktopGameContent = () => (
     <>
       <Stats />
       <Suspense fallback={<LoadingPlaceholder />}>
@@ -112,14 +114,41 @@ export function Game() {
         {/* Other players */}
         <OtherPlayers />
         
-        {/* Add Controls component which will render joystick for mobile */}
+        {/* Controls component just for debugging on desktop */}
+        <Controls />
+      </Suspense>
+    </>
+  );
+  
+  // Mobile version uses touch controls
+  const MobileGameContent = () => (
+    <>
+      <Stats />
+      <Suspense fallback={<LoadingPlaceholder />}>
+        {/* Environment elements that follow the player */}
+        <EnvironmentFollower />
+        
+        {/* Ambient light for the scene */}
+        <ambientLight intensity={0.8} />
+        
+        {/* World renderer component */}
+        <WorldRenderer />
+        
+        {/* Player's vehicle */}
+        <Vehicle />
+        
+        {/* Other players */}
+        <OtherPlayers />
+        
+        {/* Controls component renders joystick for mobile */}
         <Controls />
       </Suspense>
     </>
   );
 
-  // Conditionally wrap with KeyboardControls for desktop or render directly for mobile
+  // Conditionally render desktop or mobile version
   if (!isMobile) {
+    // Desktop version with KeyboardControls wrapper
     return (
       <KeyboardControls map={keyboardMap}>
         <Canvas
@@ -127,20 +156,20 @@ export function Game() {
           camera={{ position: [0, 5, 10], fov: 60 }}
           style={{ width: '100%', height: '100%' }}
         >
-          <GameContent />
+          <DesktopGameContent />
         </Canvas>
       </KeyboardControls>
     );
   }
   
-  // For mobile, render without KeyboardControls wrapper
+  // Mobile version without KeyboardControls wrapper
   return (
     <Canvas
       shadows
       camera={{ position: [0, 5, 10], fov: 60 }}
       style={{ width: '100%', height: '100%' }}
     >
-      <GameContent />
+      <MobileGameContent />
     </Canvas>
   );
 }
