@@ -70,7 +70,6 @@ export function MobileControls() {
 
 // Desktop Controls component - specifically for desktop devices
 export function DesktopControls() {
-  const desktopControls = useDesktopControls();
   
   // No debug logging in production
   useEffect(() => {
