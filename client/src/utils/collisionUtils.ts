@@ -17,8 +17,8 @@ export const COLLISION_COOLDOWN = 1000;
 export const SPAWN_PROTECTION_TIME = 10000;
 
 // Bounce-back force when vehicles collide (higher = stronger bounce)
-// Increased from 0.5 to 1.0 for more pronounced bouncing effect
-export const COLLISION_RESTITUTION = 1.0;
+// Significantly increased to ensure vehicles don't stick together
+export const COLLISION_RESTITUTION = 2.5;
 
 // Maximum distance for collision detection (units)
 // Reduced to be more realistic - just over 1 car length
@@ -135,14 +135,15 @@ const _corners = [
 ];
 const _box = new Box3();
 
-// Create a rotated bounding box for a vehicle with a slight reduction in size
+// Reusable rotated bounding box for collision detection
+// Optimized to use fewer corner calculations
 function createVehicleBoundingBox(position: Vector3, rotationY: number): Box3 {
   // Create corners of the vehicle in local space
-  // Slightly reduce the collision box size to make collisions more precise
-  // Using 90% of the actual size makes collisions feel more realistic
-  const halfWidth = (VEHICLE_WIDTH * 0.9) / 2;
-  const halfHeight = (VEHICLE_HEIGHT * 0.9) / 2;
-  const halfLength = (VEHICLE_LENGTH * 0.9) / 2;
+  // Reduce collision box size to make collisions more accurate
+  // Using 85% of the actual size for more precise collision detection
+  const halfWidth = (VEHICLE_WIDTH * 0.85) / 2;
+  const halfHeight = (VEHICLE_HEIGHT * 0.85) / 2;
+  const halfLength = (VEHICLE_LENGTH * 0.85) / 2;
   
   // Calculate sin and cos of rotation angle
   const cos = Math.cos(rotationY);
@@ -151,37 +152,45 @@ function createVehicleBoundingBox(position: Vector3, rotationY: number): Box3 {
   // Reset the box for reuse
   _box.makeEmpty();
   
-  // Corner index tracker
-  let cornerIdx = 0;
+  // Instead of calculating all 8 corners (which is expensive),
+  // let's only calculate the 4 corners of the horizontal bounding rectangle
+  // This is sufficient for most vehicle collisions and is more performant
   
-  // Reuse the same corner vectors instead of creating new ones
-  for (let x = -1; x <= 1; x += 2) {
-    for (let y = -1; y <= 1; y += 2) {
-      for (let z = -1; z <= 1; z += 2) {
-        // Local coordinates
-        const localX = x * halfWidth;
-        const localY = y * halfHeight;
-        const localZ = z * halfLength;
-        
-        // Apply rotation around Y axis
-        const rotatedX = localX * cos - localZ * sin;
-        const rotatedZ = localX * sin + localZ * cos;
-        
-        // Apply translation to world space - update the reusable vector
-        _corners[cornerIdx].set(
-          position.x + rotatedX,
-          position.y + localY,
-          position.z + rotatedZ
-        );
-        
-        // Add this corner to the box
-        _box.expandByPoint(_corners[cornerIdx]);
-        
-        // Move to next corner
-        cornerIdx++;
-      }
-    }
-  }
+  // Front-right corner
+  _corners[0].set(
+    position.x + (halfWidth * cos - halfLength * sin),
+    position.y,
+    position.z + (halfWidth * sin + halfLength * cos)
+  );
+  _box.expandByPoint(_corners[0]);
+  
+  // Front-left corner
+  _corners[1].set(
+    position.x + (-halfWidth * cos - halfLength * sin),
+    position.y,
+    position.z + (-halfWidth * sin + halfLength * cos)
+  );
+  _box.expandByPoint(_corners[1]);
+  
+  // Back-right corner
+  _corners[2].set(
+    position.x + (halfWidth * cos + halfLength * sin),
+    position.y,
+    position.z + (halfWidth * sin - halfLength * cos)
+  );
+  _box.expandByPoint(_corners[2]);
+  
+  // Back-left corner
+  _corners[3].set(
+    position.x + (-halfWidth * cos + halfLength * sin),
+    position.y,
+    position.z + (-halfWidth * sin - halfLength * cos)
+  );
+  _box.expandByPoint(_corners[3]);
+  
+  // Add height to the box after creating the base rectangle
+  _box.min.y = position.y - halfHeight;
+  _box.max.y = position.y + halfHeight;
   
   return _box;
 }

@@ -8,7 +8,8 @@ import {
   calculateDamage,
   calculatePenetrationVector,
   hasSpawnProtection,
-  COLLISION_COOLDOWN
+  COLLISION_COOLDOWN,
+  MAX_COLLISION_DISTANCE
 } from '@/utils/collisionUtils';
 import { Player, Vector3 } from 'shared/types/player';
 
@@ -19,9 +20,27 @@ class CollisionService {
   // Keep track of trees we've collided with to avoid repeat collisions
   private treeCollisionTimestamps: Map<string, number> = new Map();
   
+  // Cache the timestamp to avoid multiple Date.now() calls
+  private currentTimestamp: number = Date.now();
+  
+  // Cache the last frame's player positions to avoid unnecessary collision checks
+  private lastPlayerPositions: Map<string, {x: number, z: number}> = new Map();
+  
+  // How far a player needs to move before we check collisions again (in units)
+  private readonly POSITION_CHANGE_THRESHOLD = 0.2;
+  
+  // Update the timestamp once per frame
+  private updateTimestamp(): number {
+    this.currentTimestamp = Date.now();
+    return this.currentTimestamp;
+  }
+  
   // Check collisions with other vehicles and handle physics response
   public checkVehicleCollisions(playerId: string): ThreeVector3 | null {
     if (!playerId) return null;
+    
+    // Update timestamp once per frame
+    this.updateTimestamp();
     
     try {
       const store = useGameStore.getState();
@@ -35,14 +54,47 @@ class CollisionService {
       // Initialize response vector
       let responseVector: ThreeVector3 | null = null;
       
+      // Check if player has moved enough to justify collision checks
+      const lastPos = this.lastPlayerPositions.get(playerId);
+      const hasMovedEnough = !lastPos || 
+        Math.abs(lastPos.x - player.position.x) > this.POSITION_CHANGE_THRESHOLD ||
+        Math.abs(lastPos.z - player.position.z) > this.POSITION_CHANGE_THRESHOLD;
+      
+      // Update the last position
+      this.lastPlayerPositions.set(playerId, {
+        x: player.position.x,
+        z: player.position.z
+      });
+      
+      // If player hasn't moved enough, skip detailed collision checks
+      if (!hasMovedEnough) {
+        return responseVector;
+      }
+      
+      // Get all players as an array for better performance than object iteration
+      const playerIds = Object.keys(store.players);
+      const playerCount = playerIds.length;
+      
       // Check against all other players
-      for (const otherPlayerId in store.players) {
+      for (let i = 0; i < playerCount; i++) {
+        const otherPlayerId = playerIds[i];
+        
         // Skip checking against ourselves
         if (otherPlayerId === playerId) continue;
         
         const otherPlayer = store.players[otherPlayerId];
         
         try {
+          // Fast distance check before detailed collision detection
+          const dx = player.position.x - otherPlayer.position.x;
+          const dz = player.position.z - otherPlayer.position.z;
+          const distanceSquared = dx * dx + dz * dz;
+          
+          // Skip detailed check if far apart
+          if (distanceSquared > MAX_COLLISION_DISTANCE * MAX_COLLISION_DISTANCE) {
+            continue;
+          }
+          
           // Check for collision
           if (checkVehicleCollision(player, otherPlayer)) {
             // Calculate collision response vector to push vehicles apart
@@ -63,52 +115,44 @@ class CollisionService {
             // Determine if the other player should take damage
             const otherPlayerCanTakeDamage = !this.hasRecentCollision(otherPlayer) && !hasSpawnProtection(otherPlayer);
             
-            // Get speeds of both vehicles for damage calculation
-            const playerSpeed = this.getPlayerSpeed(player);
-            const otherPlayerSpeed = this.getPlayerSpeed(otherPlayer);
-            
-            // Calculate relative collision speed (average of both speeds)
-            const relativeSpeed = (playerSpeed + otherPlayerSpeed) * 0.5;
-            
-            // Calculate damage for this player based on relative speed
-            if (playerCanTakeDamage) {
-              const damage = calculateDamage(relativeSpeed);
+            // Only calculate speeds if either player can take damage
+            if (playerCanTakeDamage || otherPlayerCanTakeDamage) {
+              // Get speeds of both vehicles for damage calculation
+              const playerSpeed = this.getPlayerSpeed(player);
+              const otherPlayerSpeed = this.getPlayerSpeed(otherPlayer);
               
-              if (damage > 0) {
-                // Apply damage to the player
-                store.damagePlayer(playerId, damage);
+              // Calculate relative collision speed (average of both speeds)
+              const relativeSpeed = (playerSpeed + otherPlayerSpeed) * 0.5;
+              
+              // Calculate damage for this player based on relative speed
+              if (playerCanTakeDamage) {
+                const damage = calculateDamage(relativeSpeed);
                 
-                // Send update to server
-                socketService.sendPlayerUpdate({
-                  health: isNaN(player.health) ? 100 - damage : player.health - damage,
-                  lastCollision: Date.now()
-                });
+                if (damage > 0) {
+                  // Apply damage to the player
+                  store.damagePlayer(playerId, damage);
+                  
+                  // Send update to server
+                  socketService.sendPlayerUpdate({
+                    health: isNaN(player.health) ? 100 - damage : player.health - damage,
+                    lastCollision: this.currentTimestamp
+                  });
+                }
+              }
+              
+              // Calculate damage for other player based on relative speed
+              if (otherPlayerCanTakeDamage) {
+                const damage = calculateDamage(relativeSpeed);
                 
-                if (DEBUG) console.log(`Our vehicle damaged by ${damage} in collision with ${otherPlayerId}`);
+                if (damage > 0) {
+                  // Apply damage to the other player
+                  store.damagePlayer(otherPlayerId, damage);
+                }
               }
             }
             
-            // Calculate damage for other player based on relative speed
-            if (otherPlayerCanTakeDamage) {
-              const damage = calculateDamage(relativeSpeed);
-              
-              if (damage > 0) {
-                // Apply damage to the other player
-                store.damagePlayer(otherPlayerId, damage);
-                
-                // No need to send update for other player - they'll handle their own health
-                // This is just for local rendering
-                
-                if (DEBUG) console.log(`Other vehicle ${otherPlayerId} damaged by ${damage}`);
-              }
-            }
-            
-            // Play collision sound either way
+            // Play collision sound
             audioService.playCollisionSound();
-            
-            if (DEBUG && (playerCanTakeDamage || otherPlayerCanTakeDamage)) {
-              console.log(`Collision between ${playerId} and ${otherPlayerId}, relative speed: ${relativeSpeed}`);
-            }
           }
         } catch (err) {
           // Error handling without logging
@@ -273,20 +317,42 @@ class CollisionService {
   // Periodically clean up old collision records to prevent memory leaks
   // This method should be called regularly to ensure the map doesn't grow infinitely
   public cleanupCollisionRecords(): void {
-    const now = Date.now();
-    const staleTimestamp = now - COLLISION_COOLDOWN;
+    const staleTimestamp = this.currentTimestamp - COLLISION_COOLDOWN;
     
-    // Iterate through all entries and remove any that are older than the cooldown
-    this.treeCollisionTimestamps.forEach((timestamp, treeId) => {
-      if (timestamp < staleTimestamp) {
-        this.treeCollisionTimestamps.delete(treeId);
+    // Only clean up if we have more than 50 tree collision records to avoid unnecessary iteration
+    if (this.treeCollisionTimestamps.size > 50) {
+      // Using keys array for faster iteration
+      const treeIds = Array.from(this.treeCollisionTimestamps.keys());
+      const treeCount = treeIds.length;
+      
+      // Only process up to 100 trees per frame to distribute the workload
+      const batchSize = Math.min(100, treeCount);
+      
+      for (let i = 0; i < batchSize; i++) {
+        const treeId = treeIds[i];
+        const timestamp = this.treeCollisionTimestamps.get(treeId);
+        
+        if (timestamp && timestamp < staleTimestamp) {
+          this.treeCollisionTimestamps.delete(treeId);
+        }
       }
-    });
+      
+      // If map is getting too large, clear the oldest half to prevent memory issues
+      if (this.treeCollisionTimestamps.size > 500) {
+        const entries = Array.from(this.treeCollisionTimestamps.entries());
+        entries.sort((a, b) => a[1] - b[1]); // Sort by timestamp
+        
+        // Remove oldest half
+        const toRemove = Math.floor(entries.length / 2);
+        for (let i = 0; i < toRemove; i++) {
+          this.treeCollisionTimestamps.delete(entries[i][0]);
+        }
+      }
+    }
     
-    // Add a size check to prevent the map from growing too large
-    if (this.treeCollisionTimestamps.size > 1000) {
-      // If we somehow have more than 1000 entries, just clear the entire map
-      this.treeCollisionTimestamps.clear();
+    // Also cleanup position cache if it grows too large
+    if (this.lastPlayerPositions.size > 20) {
+      this.lastPlayerPositions.clear();
     }
   }
 }

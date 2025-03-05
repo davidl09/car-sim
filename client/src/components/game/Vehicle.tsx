@@ -163,15 +163,20 @@ export function Vehicle({ controlType }: VehicleProps) {
   const _movement = new Vector3();
   const _targetPosition = new Vector3();
   
+  // Frame counter for periodic operations
+  const frameCount = useRef<number>(0);
+  
   // Move the vehicle based on input
   useFrame(() => {
     if (!vehicleRef.current || !playerState || !playerId) return;
     
     // Periodically clean up collision records to prevent memory leaks
-    // Only run this check every ~3 seconds (180 frames at 60fps)
-    if (Math.random() < 0.0055) {
+    // Do this every 5 seconds (300 frames at 60fps) rather than randomly
+    // Using a more deterministic approach with frame counting
+    if (frameCount.current % 300 === 0) {
       collisionService.cleanupCollisionRecords();
     }
+    frameCount.current++;
     
     // Get current input state (from keyboard or joystick)
     const { 
@@ -292,8 +297,8 @@ export function Vehicle({ controlType }: VehicleProps) {
     // Apply velocity to vehicle position - use reusable vector instead of creating new one
     _movement.copy(velocity.current);
     
-    // Apply rotation to movement direction
-    _movement.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+    // Apply rotation to movement direction - use reusable vector to avoid creating new objects
+    _movement.applyAxisAngle(_tempVec3_3.set(0, 1, 0), vehicleRef.current.rotation.y);
     
     // Update vehicle position
     vehicleRef.current.position.add(_movement);
@@ -310,23 +315,29 @@ export function Vehicle({ controlType }: VehicleProps) {
     
     // Apply collision response to prevent vehicles from passing through each other
     if (vehicleCollisionResponse) {
-      // Update position
+      // First, apply position correction to prevent overlapping
       vehicleRef.current.position.add(vehicleCollisionResponse);
       
       // Get current speed before reduction
       const currentSpeed = velocity.current.length();
       
-      // Reduce vehicle speed on collision - but keep more momentum (30% instead of 20%)
-      const SPEED_REDUCTION_FACTOR = 0.3; // Keep 30% of current speed
-      velocity.current.multiplyScalar(SPEED_REDUCTION_FACTOR);
+      // Preserve more momentum in collisions - keep 60% of speed
+      const SPEED_RETENTION_FACTOR = 0.6; 
+      velocity.current.multiplyScalar(SPEED_RETENTION_FACTOR);
       
-      // Bounce effect that scales with collision speed
-      // Higher speed collisions result in stronger bounce-back
-      const bounceStrength = Math.min(0.15, 0.05 + (currentSpeed * 0.1));
+      // Much stronger bounce effect that scales with collision speed
+      // The faster the collision, the stronger the rebound
+      const bounceStrength = Math.min(0.35, 0.15 + (currentSpeed * 0.2));
       
-      // Add bounce in the direction of the collision response - reuse vector
+      // Apply a stronger bounce in the direction of the collision response
+      // This ensures vehicles move away from each other after collision
       _tempVec3.copy(vehicleCollisionResponse).normalize().multiplyScalar(bounceStrength);
+      
+      // Add the bounce force to the current velocity
       velocity.current.add(_tempVec3);
+      
+      // Add a small additional impulse in the collision direction to ensure separation
+      vehicleRef.current.position.add(_tempVec3.multiplyScalar(0.05));
     }
     
     // Apply tree collision response
