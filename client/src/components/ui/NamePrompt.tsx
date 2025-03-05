@@ -3,51 +3,87 @@ import { useGameStore } from '@/store/gameStore';
 import { socketService } from '@/services/socketService';
 import styles from './NamePrompt.module.css';
 
-export function NamePrompt() {
+interface NamePromptProps {
+  onNameSubmitted?: () => void;
+}
+
+export function NamePrompt({ onNameSubmitted }: NamePromptProps) {
   const [name, setName] = useState('');
-  const [isVisible, setIsVisible] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const playerId = useGameStore((state) => state.playerId);
   const players = useGameStore((state) => state.players);
   
-  // Hide prompt if player already has a custom name
+  // Check if on mobile device on mount
+  useEffect(() => {
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent));
+  }, []);
+  
+  // Auto-submit a random name after 10 seconds on mobile
+  useEffect(() => {
+    if (isMobile) {
+      const timer = setTimeout(() => {
+        if (!name && onNameSubmitted) {
+          handleSubmit(new Event('submit') as unknown as React.FormEvent);
+        }
+      }, 10000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isMobile, name, onNameSubmitted]);
+  
+  // If player already has a custom name, skip the prompt
   useEffect(() => {
     if (playerId && players[playerId]) {
       const playerName = players[playerId].name || '';
-      // If the name has been customized (not the default), hide the prompt
+      // If the name has been customized (not the default), skip this step
       if (playerName && !playerName.startsWith('Player ')) {
-        setIsVisible(false);
+        if (onNameSubmitted) {
+          onNameSubmitted();
+        }
       }
     }
-  }, [playerId, players]);
+  }, [playerId, players, onNameSubmitted]);
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    setIsLoading(true);
+    
     // Send name to server even if empty - server will generate a random name
     socketService.setPlayerName(name.trim());
-    setIsVisible(false);
+    
+    // Allow some time for the name to be processed
+    setTimeout(() => {
+      setIsLoading(false);
+      if (onNameSubmitted) {
+        onNameSubmitted();
+      }
+    }, 500);
   };
-  
-  if (!isVisible) {
-    return null;
-  }
   
   return (
     <div className={styles.overlay}>
       <div className={styles.promptContainer}>
-        <h2>Enter Your Name</h2>
+        <h2>{isMobile ? 'Enter Name' : 'Enter Your Name'}</h2>
         <form onSubmit={handleSubmit}>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Leave empty for random name"
+            placeholder={isMobile ? "Tap to enter name" : "Leave empty for random name"}
             maxLength={15}
-            autoFocus
+            autoFocus={!isMobile} // Only autofocus on desktop
             className={styles.nameInput}
+            disabled={isLoading}
           />
-          <button type="submit" className={styles.submitButton}>
-            Start Driving
+          <button 
+            type="submit" 
+            className={styles.submitButton}
+            disabled={isLoading}
+          >
+            {isLoading ? '⏳ Setting Name...' : isMobile ? 'Start' : 'Start Driving'}
           </button>
         </form>
       </div>

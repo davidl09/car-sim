@@ -1,6 +1,7 @@
 /**
  * WebAudioService - A more efficient implementation for engine sounds
  * Uses the Web Audio API directly for better performance and more precise control
+ * Optimized for mobile performance with lazy loading
  */
 class WebAudioService {
   private audioContext: AudioContext | null = null;
@@ -12,20 +13,39 @@ class WebAudioService {
   private currentSpeed: number = 0;
   private masterVolume: number = 0.5;
   private loadPromise: Promise<void> | null = null;
+  private isMobile: boolean = false;
   
   constructor() {
-    this.init();
+    // Check if we're on mobile
+    this.isMobile = this.detectMobileDevice();
+    
+    // Don't initialize immediately - wait for explicit initialization call
   }
 
-  private init(): void {
+  // Detect if we're on a mobile device for optimizations
+  private detectMobileDevice(): boolean {
+    if (typeof window === 'undefined') return false;
+    
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+  }
+  
+  // Initialize audio context only when explicitly called
+  public init(): Promise<void> {
+    // If already initialized or initializing, return existing promise
+    if (this.isInitialized || this.loadPromise) {
+      return this.loadPromise || Promise.resolve();
+    }
+    
     try {
-      // Create audio context
+      // Create audio context only when needed
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       
-      // Pre-load the engine sound
-      this.loadEngineSound();
+      // Start loading the engine sound
+      return this.loadEngineSound();
     } catch (error) {
-      // Failed to initialize WebAudioService
+      console.error("Failed to initialize WebAudioService", error);
+      return Promise.resolve();
     }
   }
 
@@ -38,29 +58,37 @@ class WebAudioService {
       return this.loadPromise;
     }
     
-    this.loadPromise = new Promise(async (resolve, /*reject*/) => {
+    this.loadPromise = new Promise(async (resolve) => {
       try {
-        // Create empty buffer for now (in case file not available)
-        // We know audioContext exists here because we checked at the beginning
-        const sampleRate = this.audioContext!.sampleRate;
-        const emptyBuffer = this.audioContext!.createBuffer(2, sampleRate * 2, sampleRate);
-        this.engineBuffer = emptyBuffer;
-        
-        // Try to load actual sound file
-        const response = await fetch('/audio/engine-loop.mp3');
-        if (!response.ok) {
-          this.createSyntheticEngineSound();
+        // For mobile, use a much simpler, shorter engine sound buffer to improve performance
+        if (this.isMobile) {
+          this.createSimpleEngineSound();
+          this.isInitialized = true;
           resolve();
           return;
         }
         
-        const arrayBuffer = await response.arrayBuffer();
-        // We know audioContext exists here because we checked at the beginning
-        this.engineBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
-        this.isInitialized = true;
-        resolve();
+        try {
+          // Try to load actual sound file
+          const response = await fetch('/audio/engine-loop.mp3');
+          if (!response.ok) {
+            throw new Error('Failed to load engine sound');
+          }
+          
+          const arrayBuffer = await response.arrayBuffer();
+          this.engineBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
+          this.isInitialized = true;
+          resolve();
+        } catch (error) {
+          // Fallback to simplified engine sound
+          this.createSimpleEngineSound();
+          this.isInitialized = true;
+          resolve();
+        }
       } catch (error) {
-        this.createSyntheticEngineSound();
+        // Final fallback - create the most basic sound possible
+        this.createFallbackSound();
+        this.isInitialized = true;
         resolve();
       }
     });
@@ -68,39 +96,61 @@ class WebAudioService {
     return this.loadPromise;
   }
   
-  private createSyntheticEngineSound(): void {
-    if (!this.audioContext) {
-      return;
-    }
+  // Creates a simplified engine sound - optimized for performance
+  private createSimpleEngineSound(): void {
+    if (!this.audioContext) return;
     
-    // Create a synthetic engine sound as a backup
+    // Use a much shorter buffer for mobile to reduce memory usage
+    const duration = this.isMobile ? 0.5 : 1.0; // shorter on mobile
     const sampleRate = this.audioContext.sampleRate;
-    const buffer = this.audioContext.createBuffer(2, sampleRate * 2, sampleRate);
+    const bufferSize = Math.floor(sampleRate * duration);
+    const buffer = this.audioContext.createBuffer(1, bufferSize, sampleRate); // Mono on mobile
     
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-      const channelData = buffer.getChannelData(channel);
-      for (let i = 0; i < channelData.length; i++) {
-        // Create a simple repeating pattern that sounds engine-like
-        channelData[i] = 
-          (Math.sin(i * 0.01) * 0.5) + 
-          (Math.sin(i * 0.02) * 0.3) + 
-          (Math.sin(i * 0.05) * 0.1);
-      }
+    // Get the buffer data
+    const channelData = buffer.getChannelData(0);
+    
+    // Use a simplified algorithm with fewer calculations
+    const frequency = 50; // Base frequency
+    const step = (2 * Math.PI * frequency) / sampleRate;
+    
+    // Generate the samples - only one sine wave instead of three
+    for (let i = 0; i < bufferSize; i++) {
+      channelData[i] = Math.sin(i * step) * 0.5;
     }
     
     this.engineBuffer = buffer;
-    this.isInitialized = true;
+  }
+  
+  // Ultimate fallback - creates a tiny buffer with minimal CPU usage
+  private createFallbackSound(): void {
+    if (!this.audioContext) return;
+    
+    // Create the smallest possible buffer that will still loop
+    const sampleRate = this.audioContext.sampleRate;
+    const bufferSize = Math.floor(sampleRate * 0.1); // 100ms buffer
+    const buffer = this.audioContext.createBuffer(1, bufferSize, sampleRate);
+    
+    // Fill with a basic tone
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      channelData[i] = Math.sin(i * 0.1) * 0.3;
+    }
+    
+    this.engineBuffer = buffer;
   }
 
-  public startEngine(): void {
+  public startEngine(): Promise<void> {
+    // Initialize audio system if needed
     if (!this.isInitialized) {
-      this.loadEngineSound().then(() => this.startEngineSound());
+      return this.init().then(() => this.startEngineSound());
     } else {
       this.startEngineSound();
+      return Promise.resolve();
     }
   }
   
   private startEngineSound(): void {
+    // Skip if already playing or missing resources
     if (!this.audioContext || !this.engineBuffer || this.isPlaying) {
       return;
     }
@@ -111,34 +161,46 @@ class WebAudioService {
         this.audioContext.resume();
       }
       
-      // Create gain node for volume control
-      this.gainNode = this.audioContext.createGain();
-      this.gainNode.gain.value = 0.2 * this.masterVolume; // Start with idle volume
-      this.gainNode.connect(this.audioContext.destination);
+      // Reuse existing gain node if possible
+      if (!this.gainNode) {
+        this.gainNode = this.audioContext.createGain();
+        this.gainNode.connect(this.audioContext.destination);
+      }
       
-      // Create and configure source node
+      // Set initial volume (lower on mobile)
+      const initialVolume = this.isMobile ? 0.15 : 0.2;
+      this.gainNode.gain.value = initialVolume * this.masterVolume;
+      
+      // Create source node
       this.engineNode = this.audioContext.createBufferSource();
       this.engineNode.buffer = this.engineBuffer;
       this.engineNode.loop = true;
       
-      // Set initial playback rate (idle speed)
-      this.engineNode.playbackRate.value = 0.6;
+      // Set initial playback rate (lower on mobile for better performance)
+      this.engineNode.playbackRate.value = this.isMobile ? 0.5 : 0.6;
       
       // Connect and start
       this.engineNode.connect(this.gainNode);
       this.engineNode.start(0);
       this.isPlaying = true;
       
-      // If engine gets ended somehow, clean up
+      // Simplified cleanup handler
       this.engineNode.onended = () => {
         this.isPlaying = false;
-        this.cleanupAudio();
+        if (this.engineNode) {
+          this.engineNode = null;
+        }
       };
     } catch (error) {
-      // Failed to start engine sound
+      // Reset state on error
+      this.isPlaying = false;
+      console.error("Failed to start engine sound:", error);
     }
   }
 
+  // Track last update time for throttling updates on mobile
+  private lastUpdateTime: number = 0;
+  
   public updateEngineSound(speed: number): void {
     if (!this.isPlaying || !this.audioContext || !this.engineNode || !this.gainNode) {
       this.currentSpeed = speed;
@@ -148,52 +210,65 @@ class WebAudioService {
     // Store current speed
     this.currentSpeed = speed;
     
-    try {
-      // Ensure a minimum value for idle sound when stationary
-      const minSpeedValue = 0.5; // Minimum to ensure we have sound at idle
-      
-      // Always use at least the minimum speed value for a baseline engine sound
-      // This gives us our idle sound when the car isn't moving
-      const effectiveSpeed = Math.max(speed, minSpeedValue);
-      
-      // Scale sound over the full speed range (0-200 km/h)
-      // This ensures we use the full sound range and don't max out too early
-      const maxSpeedKmh = 200; // Our new max speed
-      
-      // Linear scaling factor from 0 to 1 over the entire speed range
-      const speedFactor = (effectiveSpeed - minSpeedValue) / (maxSpeedKmh - minSpeedValue);
-      
-      // Ensure we're always in the 0-1 range
-      const normalizedSpeed = Math.max(0, Math.min(speedFactor, 1));
-      
-      // Calculate new playback rate with wider range
-      const minRate = 0.5;  // Lower idle sound
-      const maxRate = 2.0;  // Higher top-end sound
-      const newRate = minRate + normalizedSpeed * (maxRate - minRate);
-      
-      // Calculate new volume with more variation
-      const minVolume = 0.15; // Quieter at idle
-      const maxVolume = 0.85; // Louder at max speed
-      const newVolume = (minVolume + normalizedSpeed * (maxVolume - minVolume)) * this.masterVolume;
-      
-      // Set new parameters using the AudioParam API for smooth transitions
-      const currentTime = this.audioContext.currentTime;
-      
-      // Shorter transition time for more responsive sound changes
-      const transitionTime = 0.05; // Faster response (was 0.1)
-      
-      // Update playback rate with slight ramp for smoothness
-      this.engineNode.playbackRate.cancelScheduledValues(currentTime);
-      this.engineNode.playbackRate.setValueAtTime(this.engineNode.playbackRate.value, currentTime);
-      this.engineNode.playbackRate.linearRampToValueAtTime(newRate, currentTime + transitionTime);
-      
-      // Update volume with slight ramp for smoothness
-      this.gainNode.gain.cancelScheduledValues(currentTime);
-      this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currentTime);
-      this.gainNode.gain.linearRampToValueAtTime(newVolume, currentTime + transitionTime);
-    } catch (error) {
-      // Error updating engine sound
+    // On mobile, throttle updates to reduce CPU usage
+    const now = performance.now();
+    if (this.isMobile && now - this.lastUpdateTime < 100) { // Only update every 100ms on mobile
+      return;
     }
+    this.lastUpdateTime = now;
+    
+    try {
+      // Simpler calculation for mobile devices
+      if (this.isMobile) {
+        this.updateEngineSimple(speed);
+        return;
+      }
+      
+      // Desktop gets the full experience with smooth transitions
+      this.updateEngineDetailed(speed);
+    } catch (error) {
+      // Error updating engine sound - fail silently
+    }
+  }
+  
+  // Simplified engine sound updates for mobile
+  private updateEngineSimple(speed: number): void {
+    if (!this.engineNode || !this.gainNode || !this.audioContext) return;
+    
+    // Simplified calculation with fewer operations
+    const normalizedSpeed = Math.min(speed / 200, 1);
+    
+    // Direct value setting without transitions - more efficient
+    this.engineNode.playbackRate.value = 0.5 + normalizedSpeed;
+    this.gainNode.gain.value = (0.2 + normalizedSpeed * 0.5) * this.masterVolume;
+  }
+  
+  // Detailed engine sound updates for desktop
+  private updateEngineDetailed(speed: number): void {
+    if (!this.engineNode || !this.gainNode || !this.audioContext) return;
+    
+    // More detailed calculation with transitions
+    const minSpeedValue = 0.5;
+    const effectiveSpeed = Math.max(speed, minSpeedValue);
+    const maxSpeedKmh = 200;
+    
+    const speedFactor = (effectiveSpeed - minSpeedValue) / (maxSpeedKmh - minSpeedValue);
+    const normalizedSpeed = Math.max(0, Math.min(speedFactor, 1));
+    
+    const minRate = 0.5;
+    const maxRate = 2.0;
+    const newRate = minRate + normalizedSpeed * (maxRate - minRate);
+    
+    const minVolume = 0.15;
+    const maxVolume = 0.85;
+    const newVolume = (minVolume + normalizedSpeed * (maxVolume - minVolume)) * this.masterVolume;
+    
+    // Smooth transitions using the Web Audio API
+    const currentTime = this.audioContext.currentTime;
+    const transitionTime = 0.05;
+    
+    this.engineNode.playbackRate.linearRampToValueAtTime(newRate, currentTime + transitionTime);
+    this.gainNode.gain.linearRampToValueAtTime(newVolume, currentTime + transitionTime);
   }
 
   public stopEngine(): void {
@@ -210,14 +285,11 @@ class WebAudioService {
         this.engineNode = null;
       }
       
-      if (this.gainNode) {
-        this.gainNode.disconnect();
-        this.gainNode = null;
-      }
-      
+      // Keep the gain node for reuse
       this.isPlaying = false;
     } catch (error) {
-      // Error cleaning up audio
+      // Reset state on error
+      this.isPlaying = false;
     }
   }
   
@@ -226,12 +298,15 @@ class WebAudioService {
     
     // Apply volume change immediately if playing
     if (this.isPlaying && this.gainNode) {
-      const normalizedSpeed = Math.min(this.currentSpeed / 30, 1);
-      const minVolume = 0.2;
-      const maxVolume = 0.7;
-      const newVolume = (minVolume + normalizedSpeed * (maxVolume - minVolume)) * this.masterVolume;
-      
-      this.gainNode.gain.value = newVolume;
+      if (this.isMobile) {
+        // Simple volume adjustment for mobile
+        this.gainNode.gain.value = 0.3 * this.masterVolume;
+      } else {
+        // More nuanced volume change for desktop
+        const normalizedSpeed = Math.min(this.currentSpeed / 200, 1);
+        const volume = (0.2 + normalizedSpeed * 0.5) * this.masterVolume;
+        this.gainNode.gain.value = volume;
+      }
     }
   }
   
