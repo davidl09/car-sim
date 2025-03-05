@@ -145,8 +145,18 @@ class CollisionService {
                 const damage = calculateDamage(relativeSpeed);
                 
                 if (damage > 0) {
-                  // Apply damage to the other player
+                  // Apply damage to the other player locally (for visual feedback)
                   store.damagePlayer(otherPlayerId, damage);
+                  
+                  // We don't need to notify the server about other player damage
+                  // Instead, we keep track of the damage locally in our own client
+                  // The other player's client will perform its own collision detection and damage
+                  
+                  // Note: This design means each client is responsible for calculating
+                  // its own damage during collisions. While not perfectly synchronized,
+                  // both players should take similar damage when they collide.
+                  
+                  if (DEBUG) console.log(`Sent damage update for other player ${otherPlayerId}: ${damage}`);
                 }
               }
             }
