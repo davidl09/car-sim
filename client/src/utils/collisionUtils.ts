@@ -20,7 +20,8 @@ export const SPAWN_PROTECTION_TIME = 10000;
 export const COLLISION_RESTITUTION = 0.5;
 
 // Maximum distance for collision detection (units)
-export const MAX_COLLISION_DISTANCE = 20;
+// Reduced to be more realistic - just over 1 car length
+export const MAX_COLLISION_DISTANCE = 5;
 
 // Check if a collision has occurred between two vehicles
 export function checkVehicleCollision(player1: Player, player2: Player): boolean {
@@ -77,7 +78,9 @@ export function calculatePenetrationVector(player1: Player, player2: Player): Ve
   
   // Calculate approximate penetration depth based on distance
   const distance = _pos1.distanceTo(_pos2);
-  const minDistance = VEHICLE_WIDTH + 0.2; // Minimum distance between vehicle centers
+  // Reduce minimum distance to make collisions more precise
+  // Only consider collision when vehicles are very close
+  const minDistance = VEHICLE_WIDTH * 0.8; // Reduced minimum distance between vehicle centers
   const penetrationDepth = Math.max(0, minDistance - distance);
   
   // Calculate the vector to push the vehicles apart - reuse vector
@@ -131,12 +134,14 @@ const _corners = [
 ];
 const _box = new Box3();
 
-// Create a rotated bounding box for a vehicle
+// Create a rotated bounding box for a vehicle with a slight reduction in size
 function createVehicleBoundingBox(position: Vector3, rotationY: number): Box3 {
   // Create corners of the vehicle in local space
-  const halfWidth = VEHICLE_WIDTH / 2;
-  const halfHeight = VEHICLE_HEIGHT / 2;
-  const halfLength = VEHICLE_LENGTH / 2;
+  // Slightly reduce the collision box size to make collisions more precise
+  // Using 90% of the actual size makes collisions feel more realistic
+  const halfWidth = (VEHICLE_WIDTH * 0.9) / 2;
+  const halfHeight = (VEHICLE_HEIGHT * 0.9) / 2;
+  const halfLength = (VEHICLE_LENGTH * 0.9) / 2;
   
   // Calculate sin and cos of rotation angle
   const cos = Math.cos(rotationY);
