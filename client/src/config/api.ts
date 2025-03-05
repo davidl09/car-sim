@@ -21,7 +21,7 @@ const getApiConfig = (): ApiConfig => {
   const protocol = window.location.protocol;
   const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.hostname;
-  const port = process.env.NODE_ENV === 'production' ? '' : ':3000';
+  const port = window.location.port == '3000' ? ':3000' : '';
   
   return {
     baseUrl: `${protocol}//${host}${port}`,

@@ -21,18 +21,16 @@ class WebAudioService {
     try {
       // Create audio context
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      console.log('WebAudioService initialized');
       
       // Pre-load the engine sound
       this.loadEngineSound();
     } catch (error) {
-      console.error('Failed to initialize WebAudioService:', error);
+      // Failed to initialize WebAudioService
     }
   }
 
   public async loadEngineSound(): Promise<void> {
     if (!this.audioContext) {
-      console.warn('Audio context not available');
       return Promise.resolve();
     }
     
@@ -44,8 +42,6 @@ class WebAudioService {
       try {
         // Create empty buffer for now (in case file not available)
         // We know audioContext exists here because we checked at the beginning
-        console.log('Creating audio buffer with sample rate:', this.audioContext!.sampleRate);
-        
         const sampleRate = this.audioContext!.sampleRate;
         const emptyBuffer = this.audioContext!.createBuffer(2, sampleRate * 2, sampleRate);
         this.engineBuffer = emptyBuffer;
@@ -53,7 +49,6 @@ class WebAudioService {
         // Try to load actual sound file
         const response = await fetch('/audio/engine-loop.mp3');
         if (!response.ok) {
-          console.warn('Engine sound file not found, using synthetic sound');
           this.createSyntheticEngineSound();
           resolve();
           return;
@@ -62,11 +57,9 @@ class WebAudioService {
         const arrayBuffer = await response.arrayBuffer();
         // We know audioContext exists here because we checked at the beginning
         this.engineBuffer = await this.audioContext!.decodeAudioData(arrayBuffer);
-        console.log('Successfully decoded audio data, buffer length:', this.engineBuffer.length);
         this.isInitialized = true;
         resolve();
       } catch (error) {
-        console.warn('Failed to load engine sound, using synthetic sound:', error);
         this.createSyntheticEngineSound();
         resolve();
       }
@@ -77,12 +70,10 @@ class WebAudioService {
   
   private createSyntheticEngineSound(): void {
     if (!this.audioContext) {
-      console.warn('Cannot create synthetic sound, audio context is null');
       return;
     }
     
     // Create a synthetic engine sound as a backup
-    console.log('Creating synthetic engine sound');
     const sampleRate = this.audioContext.sampleRate;
     const buffer = this.audioContext.createBuffer(2, sampleRate * 2, sampleRate);
     
@@ -110,15 +101,7 @@ class WebAudioService {
   }
   
   private startEngineSound(): void {
-    console.log('Starting engine sound with state:', {
-      hasContext: !!this.audioContext,
-      hasBuffer: !!this.engineBuffer,
-      isInitialized: this.isInitialized,
-      isPlaying: this.isPlaying
-    });
-    
     if (!this.audioContext || !this.engineBuffer || this.isPlaying) {
-      console.warn('Cannot start engine sound, prerequisites not met');
       return;
     }
     
@@ -146,31 +129,19 @@ class WebAudioService {
       this.engineNode.start(0);
       this.isPlaying = true;
       
-      console.log('Engine sound started');
-      
       // If engine gets ended somehow, clean up
       this.engineNode.onended = () => {
         this.isPlaying = false;
         this.cleanupAudio();
       };
     } catch (error) {
-      console.error('Failed to start engine sound:', error);
+      // Failed to start engine sound
     }
   }
 
   public updateEngineSound(speed: number): void {
     if (!this.isPlaying || !this.audioContext || !this.engineNode || !this.gainNode) {
       this.currentSpeed = speed;
-      // Only log once in a while to avoid console spam
-      if (Math.random() < 0.01) {
-        console.log('Engine sound update skipped, state:', {
-          isPlaying: this.isPlaying,
-          hasContext: !!this.audioContext,
-          hasNode: !!this.engineNode,
-          hasGain: !!this.gainNode,
-          speed: speed
-        });
-      }
       return;
     }
     
@@ -221,7 +192,7 @@ class WebAudioService {
       this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currentTime);
       this.gainNode.gain.linearRampToValueAtTime(newVolume, currentTime + transitionTime);
     } catch (error) {
-      console.error('Error updating engine sound:', error);
+      // Error updating engine sound
     }
   }
 
@@ -246,7 +217,7 @@ class WebAudioService {
       
       this.isPlaying = false;
     } catch (error) {
-      console.error('Error cleaning up audio:', error);
+      // Error cleaning up audio
     }
   }
   

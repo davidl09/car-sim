@@ -49,20 +49,16 @@ class SocketService {
 
     // Connection events
     this.socket.on('connect', () => {
-      console.log('Connected to server');
       useGameStore.getState().setConnectionStatus(true);
     });
 
     this.socket.on('disconnect', () => {
-      console.log('Disconnected from server');
       useGameStore.getState().setConnectionStatus(false);
     });
 
     // Game state event
     this.socket.on(ServerEvents.GAME_STATE, (payload: GameStatePayload) => {
       const { playerId, players, worldSeed } = payload;
-      console.log(`[Socket] Received GAME_STATE. My ID: ${playerId}, Players: ${players.length}`);
-      players.forEach(p => console.log(`[Socket] > Player: ${p.id}, Color: ${p.color}`));
       
       useGameStore.getState().setPlayerId(playerId);
       useGameStore.getState().setPlayers(players);
@@ -72,13 +68,11 @@ class SocketService {
     // Game update events
     this.socket.on(ServerEvents.GAME_UPDATE, (payload: GameUpdatePayload) => {
       const { playerId, ...updates } = payload;
-      console.log(`[Socket] Received GAME_UPDATE for player: ${playerId}`);
       useGameStore.getState().updatePlayer(playerId, updates);
     });
 
     // Player join/leave events
     this.socket.on(ServerEvents.PLAYER_JOINED, (player: PlayerJoinedPayload) => {
-      console.log(`[Socket] New player joined: ${player.id}, Color: ${player.color}`);
       useGameStore.getState().updatePlayer(player.id, player);
     });
 
@@ -95,14 +89,12 @@ class SocketService {
     // Player name update event
     this.socket.on(ServerEvents.PLAYER_NAME_UPDATED, (payload: PlayerNameUpdatePayload) => {
       const { playerId, name } = payload;
-      console.log(`[Socket] Player ${playerId} updated name to: ${name}`);
       useGameStore.getState().updatePlayer(playerId, { name });
     });
     
     // Player respawn event
     this.socket.on(ServerEvents.PLAYER_RESPAWNED, (payload: PlayerRespawnPayload) => {
       const { playerId, position, rotation, velocity, health, joinTime } = payload;
-      console.log(`[Socket] Player ${playerId} respawned at position:`, position);
       useGameStore.getState().updatePlayer(playerId, { 
         position, 
         rotation, 
@@ -128,7 +120,6 @@ class SocketService {
       return;
     }
     
-    console.log('[Socket] Requesting respawn');
     this.socket.emit(ClientEvents.PLAYER_RESPAWN);
   }
 
@@ -147,7 +138,6 @@ class SocketService {
       return;
     }
     
-    console.log(`[Socket] Setting player name to: ${name}`);
     this.socket.emit(ClientEvents.PLAYER_SET_NAME, { name });
   }
 

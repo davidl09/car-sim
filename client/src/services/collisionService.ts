@@ -13,7 +13,7 @@ import {
 import { Player, Vector3 } from 'shared/types/player';
 
 // Debug flag
-const DEBUG = true;
+const DEBUG = false;
 
 class CollisionService {
   // Keep track of trees we've collided with to avoid repeat collisions
@@ -84,13 +84,13 @@ class CollisionService {
             }
           }
         } catch (err) {
-          console.error('Error in vehicle collision check:', err);
+          // Error handling without logging
         }
       }
       
       return responseVector;
     } catch (err) {
-      console.error('Error in checkVehicleCollisions:', err);
+      // Error handling without logging
       return null;
     }
   }
@@ -202,13 +202,13 @@ class CollisionService {
             audioService.playCollisionSound();
           }
         } catch (err) {
-          console.error('Error in tree collision check:', err);
+          // Error handling without logging
         }
       }
       
       return responseVector;
     } catch (err) {
-      console.error('Error in checkTreeCollisions:', err);
+      // Error handling without logging
       return null;
     }
   }
@@ -259,7 +259,6 @@ class CollisionService {
     // Add a size check to prevent the map from growing too large
     if (this.treeCollisionTimestamps.size > 1000) {
       // If we somehow have more than 1000 entries, just clear the entire map
-      console.warn(`Tree collision map grew too large (${this.treeCollisionTimestamps.size} entries), clearing it`);
       this.treeCollisionTimestamps.clear();
     }
   }

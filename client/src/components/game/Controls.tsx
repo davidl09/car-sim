@@ -72,21 +72,10 @@ export function MobileControls() {
 export function DesktopControls() {
   const desktopControls = useDesktopControls();
   
-  // Debug logging for development
+  // No debug logging in production
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    
-    const handleKeyEvents = () => {
-      const controls = desktopControls.getControls();
-      console.log('Controls:', controls);
-    };
-    
-    const intervalId = setInterval(handleKeyEvents, 500);
-    
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [desktopControls]);
+    // Empty effect - no logging
+  }, []);
   
   return null; // This is a "headless" component on desktop
 }

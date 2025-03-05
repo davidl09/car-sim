@@ -22,7 +22,6 @@ class AudioService {
       if (this.userInteracted) return;
       
       this.userInteracted = true;
-      console.log('User interacted, enabling audio');
       
       // Try to play engine if it was requested but prevented
       if (this.pendingAutoplayRequest) {
@@ -45,7 +44,6 @@ class AudioService {
   // Start engine sound
   public startEngine(): void {
     if (!this.userInteracted) {
-      console.log('Delaying engine start until user interacts');
       this.pendingAutoplayRequest = true;
       return;
     }
@@ -53,7 +51,6 @@ class AudioService {
     if (!this.engineRunning) {
       this.engineRunning = true;
       webAudioService.startEngine();
-      console.log('Engine sound started via WebAudioService');
     }
   }
   
@@ -87,15 +84,14 @@ class AudioService {
   // Play a one-shot sound
   public playSound(name: string): void {
     if (!this.userInteracted) {
-      console.log(`Can't play ${name} sound until user interacts`);
       return;
     }
     
     const sound = this.sounds.get(name);
     if (sound) {
       sound.currentTime = 0;
-      sound.play().catch(error => {
-        console.warn(`Sound ${name} play prevented: `, error);
+      sound.play().catch(() => {
+        // Sound play prevented
       });
     }
   }
@@ -161,7 +157,6 @@ class AudioService {
     } catch (e) {
       // Handle any errors with sound playback
       this.collisionSoundActive = false;
-      console.error('Error playing collision sound:', e);
     }
   }
 }

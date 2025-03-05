@@ -12,7 +12,6 @@ export function AudioButton() {
 
   // Enable audio on button click
   const enableAudio = () => {
-    console.log('User clicked to enable audio');
     // The audioService will detect this click and enable audio
     // We don't need to call anything specific here
     
