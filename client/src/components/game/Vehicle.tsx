@@ -153,9 +153,25 @@ export function Vehicle({ controlType }: VehicleProps) {
   // Extract trees from visible chunks for collision detection
   const nearbyTrees = useRef<Array<{position: PlayerVector3}>>([]);
   
+  // Reusable vectors to avoid memory allocations
+  const _tempVec3 = new Vector3();
+  const _tempVec3_2 = new Vector3();
+  const _tempVec3_3 = new Vector3();
+  const _cameraOffset = new Vector3();
+  const _lookAtPosition = new Vector3();
+  const _forwardDir = new Vector3();
+  const _movement = new Vector3();
+  const _targetPosition = new Vector3();
+  
   // Move the vehicle based on input
   useFrame(() => {
     if (!vehicleRef.current || !playerState || !playerId) return;
+    
+    // Periodically clean up collision records to prevent memory leaks
+    // Only run this check every ~3 seconds (180 frames at 60fps)
+    if (Math.random() < 0.0055) {
+      collisionService.cleanupCollisionRecords();
+    }
     
     // Get current input state (from keyboard or joystick)
     const { 
@@ -273,14 +289,14 @@ export function Vehicle({ controlType }: VehicleProps) {
     
     velocity.current.multiplyScalar(frictionFactor);
     
-    // Apply velocity to vehicle position
-    const movement = velocity.current.clone();
+    // Apply velocity to vehicle position - use reusable vector instead of creating new one
+    _movement.copy(velocity.current);
     
     // Apply rotation to movement direction
-    movement.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+    _movement.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
     
     // Update vehicle position
-    vehicleRef.current.position.add(movement);
+    vehicleRef.current.position.add(_movement);
     
     // Check for player-vehicle collisions and get collision response vector
     const vehicleCollisionResponse = collisionService.checkVehicleCollisions(playerId);
@@ -301,9 +317,9 @@ export function Vehicle({ controlType }: VehicleProps) {
       const SPEED_REDUCTION_FACTOR = 0.2; // Keep only 20% of current speed
       velocity.current.multiplyScalar(SPEED_REDUCTION_FACTOR);
       
-      // Add a small bounce in the direction of the collision response
-      const bounceVector = vehicleCollisionResponse.clone().normalize().multiplyScalar(0.05);
-      velocity.current.add(bounceVector);
+      // Add a small bounce in the direction of the collision response - reuse vector
+      _tempVec3.copy(vehicleCollisionResponse).normalize().multiplyScalar(0.05);
+      velocity.current.add(_tempVec3);
     }
     
     // Apply tree collision response
@@ -315,61 +331,62 @@ export function Vehicle({ controlType }: VehicleProps) {
       const TREE_SPEED_REDUCTION_FACTOR = 0.05; // Keep only 5% of current speed
       velocity.current.multiplyScalar(TREE_SPEED_REDUCTION_FACTOR);
       
-      // Add a small bounce in the direction of the collision response
-      const bounceVector = treeCollisionResponse.clone().normalize().multiplyScalar(0.03);
-      velocity.current.add(bounceVector);
+      // Add a small bounce in the direction of the collision response - reuse vector
+      _tempVec3.copy(treeCollisionResponse).normalize().multiplyScalar(0.03);
+      velocity.current.add(_tempVec3);
     }
     
     // Update camera position based on the current view mode
-    let cameraOffset: Vector3;
-    let lookAtPosition: Vector3;
     let lerpSpeed = 0.1; // Default smooth transition speed
     
-    // Calculate camera position and target based on the view mode
+    // Calculate camera position and target based on the view mode - reuse vectors
     switch (cameraViewRef.current) {
       case CameraView.REAR: // Default third-person view from behind
-        cameraOffset = new Vector3(0, 5, -10); // Behind and above
-        lookAtPosition = vehicleRef.current.position.clone(); // Look at vehicle
+        _cameraOffset.set(0, 5, -10); // Behind and above
+        // Set lookAtPosition to vehicle position
+        _lookAtPosition.copy(vehicleRef.current.position);
         break;
         
       case CameraView.FRONT: // Third-person view from front
-        cameraOffset = new Vector3(0, 5, 10); // In front and above
-        lookAtPosition = vehicleRef.current.position.clone(); // Look at vehicle
+        _cameraOffset.set(0, 5, 10); // In front and above
+        // Set lookAtPosition to vehicle position
+        _lookAtPosition.copy(vehicleRef.current.position);
         break;
         
       case CameraView.FIRST_PERSON: // First-person driver view
         // Position at driver's eye level, slightly offset from center
-        cameraOffset = new Vector3(0.5, 2.2, 0); // Right side (driver position), eye level
+        _cameraOffset.set(0.5, 2.2, 0); // Right side (driver position), eye level
         lerpSpeed = 0.2; // Faster transition for first-person
         
         // Look in the direction the car is facing (10 units ahead)
-        const forwardDir = new Vector3(0, 1.8, 10); // Look ahead and slightly down
+        _forwardDir.set(0, 1.8, 10); // Look ahead and slightly down
         
         // Apply car's rotation to both offset and look-direction
-        cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
-        forwardDir.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+        _cameraOffset.applyAxisAngle(_tempVec3_3.set(0, 1, 0), vehicleRef.current.rotation.y);
+        _forwardDir.applyAxisAngle(_tempVec3_3.set(0, 1, 0), vehicleRef.current.rotation.y);
         
-        lookAtPosition = vehicleRef.current.position.clone().add(forwardDir);
+        // Set lookAtPosition
+        _lookAtPosition.copy(vehicleRef.current.position).add(_forwardDir);
         break;
     }
     
     // Apply the car's rotation to camera offset (except for first-person which already did this)
     if (cameraViewRef.current !== CameraView.FIRST_PERSON) {
-      cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+      _cameraOffset.applyAxisAngle(_tempVec3_2.set(0, 1, 0), vehicleRef.current.rotation.y);
     }
     
     // Apply the calculated offset to the vehicle position
-    const targetPosition = new Vector3(
-      vehicleRef.current.position.x + cameraOffset.x,
-      vehicleRef.current.position.y + cameraOffset.y,
-      vehicleRef.current.position.z + cameraOffset.z
+    _targetPosition.set(
+      vehicleRef.current.position.x + _cameraOffset.x,
+      vehicleRef.current.position.y + _cameraOffset.y,
+      vehicleRef.current.position.z + _cameraOffset.z
     );
     
     // Smoothly transition camera to target position
-    camera.position.lerp(targetPosition, lerpSpeed);
+    camera.position.lerp(_targetPosition, lerpSpeed);
     
     // Point camera at the appropriate position
-    camera.lookAt(lookAtPosition);
+    camera.lookAt(_lookAtPosition);
     
     // Send position updates to server
     const now = Date.now();

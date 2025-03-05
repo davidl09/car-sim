@@ -36,26 +36,30 @@ export function checkVehicleCollision(player1: Player, player2: Player): boolean
   return box1.intersectsBox(box2);
 }
 
+// Reusable vectors for penetration calculation
+const _pos1 = new Vector3();
+const _pos2 = new Vector3();
+const _direction = new Vector3();
+const _penetration = new Vector3();
+
 // Calculate the penetration vector for vehicle collision response
 export function calculatePenetrationVector(player1: Player, player2: Player): Vector3 {
-  // Get positions as Three.js Vector3
-  const pos1 = new Vector3(player1.position.x, player1.position.y, player1.position.z);
-  const pos2 = new Vector3(player2.position.x, player2.position.y, player2.position.z);
+  // Get positions as Three.js Vector3 - reuse vectors
+  _pos1.set(player1.position.x, player1.position.y, player1.position.z);
+  _pos2.set(player2.position.x, player2.position.y, player2.position.z);
   
-  // Calculate vector pointing from player2 to player1
-  const direction = new Vector3().subVectors(pos1, pos2).normalize();
-  
-  // Calculate centers of each vehicle for better collision response
-  // const center1 = pos1.clone();
-  // const center2 = pos2.clone();
+  // Calculate vector pointing from player2 to player1 - reuse vector
+  _direction.copy(_pos1).sub(_pos2).normalize();
   
   // Calculate approximate penetration depth based on distance
-  const distance = pos1.distanceTo(pos2);
+  const distance = _pos1.distanceTo(_pos2);
   const minDistance = VEHICLE_WIDTH + 0.2; // Minimum distance between vehicle centers
   const penetrationDepth = Math.max(0, minDistance - distance);
   
-  // Create the vector to push the vehicles apart
-  return direction.multiplyScalar(penetrationDepth * COLLISION_RESTITUTION);
+  // Calculate the vector to push the vehicles apart - reuse vector
+  _penetration.copy(_direction).multiplyScalar(penetrationDepth * COLLISION_RESTITUTION);
+  
+  return _penetration;
 }
 
 // Check if a vehicle collides with a tree
@@ -96,6 +100,13 @@ export function hasSpawnProtection(player: Player): boolean {
   return Date.now() - player.joinTime < SPAWN_PROTECTION_TIME;
 }
 
+// Reusable vectors for collision detection to prevent memory leaks
+const _corners = [
+  new Vector3(), new Vector3(), new Vector3(), new Vector3(),
+  new Vector3(), new Vector3(), new Vector3(), new Vector3()
+];
+const _box = new Box3();
+
 // Create a rotated bounding box for a vehicle
 function createVehicleBoundingBox(position: Vector3, rotationY: number): Box3 {
   // Create corners of the vehicle in local space
@@ -107,8 +118,13 @@ function createVehicleBoundingBox(position: Vector3, rotationY: number): Box3 {
   const cos = Math.cos(rotationY);
   const sin = Math.sin(rotationY);
   
-  // Create the 8 corners of the box, applying rotation and translation
-  const corners = [];
+  // Reset the box for reuse
+  _box.makeEmpty();
+  
+  // Corner index tracker
+  let cornerIdx = 0;
+  
+  // Reuse the same corner vectors instead of creating new ones
   for (let x = -1; x <= 1; x += 2) {
     for (let y = -1; y <= 1; y += 2) {
       for (let z = -1; z <= 1; z += 2) {
@@ -121,19 +137,21 @@ function createVehicleBoundingBox(position: Vector3, rotationY: number): Box3 {
         const rotatedX = localX * cos - localZ * sin;
         const rotatedZ = localX * sin + localZ * cos;
         
-        // Apply translation to world space
-        corners.push(new Vector3(
+        // Apply translation to world space - update the reusable vector
+        _corners[cornerIdx].set(
           position.x + rotatedX,
           position.y + localY,
           position.z + rotatedZ
-        ));
+        );
+        
+        // Add this corner to the box
+        _box.expandByPoint(_corners[cornerIdx]);
+        
+        // Move to next corner
+        cornerIdx++;
       }
     }
   }
   
-  // Create a bounding box that encompasses all corners
-  const box = new Box3();
-  corners.forEach(corner => box.expandByPoint(corner));
-  
-  return box;
+  return _box;
 }

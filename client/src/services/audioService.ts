@@ -100,6 +100,11 @@ class AudioService {
     }
   }
   
+  // Cached oscillator nodes for collision sounds to prevent memory leaks
+  private collisionOscillator: OscillatorNode | null = null;
+  private collisionGain: GainNode | null = null;
+  private collisionSoundActive = false;
+  
   // Play collision sound
   public playCollisionSound(): void {
     // Throttle collision sounds to prevent too many at once
@@ -108,32 +113,56 @@ class AudioService {
     
     this.lastCollisionSound = now;
     
-    // Create a new oscillator for impact sound
+    // Get audio context
     const context = webAudioService.getAudioContext();
     if (!context) return;
     
-    // Create a short crash sound
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
+    // If we're already playing a collision sound, don't create a new one
+    if (this.collisionSoundActive) return;
+    
+    // Create/reuse audio nodes
+    if (!this.collisionOscillator || !this.collisionGain) {
+      this.collisionOscillator = context.createOscillator();
+      this.collisionGain = context.createGain();
+      
+      // Connect nodes once
+      this.collisionOscillator.connect(this.collisionGain);
+      this.collisionGain.connect(context.destination);
+    }
     
     // Set up oscillator
-    oscillator.type = 'sawtooth';
-    oscillator.frequency.setValueAtTime(120, context.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(40, context.currentTime + 0.2);
+    this.collisionOscillator.type = 'sawtooth';
+    this.collisionOscillator.frequency.cancelScheduledValues(context.currentTime);
+    this.collisionOscillator.frequency.setValueAtTime(120, context.currentTime);
+    this.collisionOscillator.frequency.exponentialRampToValueAtTime(40, context.currentTime + 0.2);
     
     // Set up gain node for volume envelope
-    gain.gain.setValueAtTime(this.engineVolume, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.3);
+    this.collisionGain.gain.cancelScheduledValues(context.currentTime);
+    this.collisionGain.gain.setValueAtTime(this.engineVolume, context.currentTime);
+    this.collisionGain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.3);
     
-    // Connect nodes
-    oscillator.connect(gain);
-    gain.connect(context.destination);
+    // Mark as active
+    this.collisionSoundActive = true;
     
-    // Start and stop the oscillator
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.3);
-    
-    console.log('Playing collision sound');
+    try {
+      // Start the oscillator
+      this.collisionOscillator.start(context.currentTime);
+      
+      // Stop the oscillator after sound completes
+      this.collisionOscillator.stop(context.currentTime + 0.3);
+      
+      // Handle completion - reset for next use
+      this.collisionOscillator.onended = () => {
+        this.collisionSoundActive = false;
+        // Recreate oscillator for next use (since they can't be restarted)
+        this.collisionOscillator = context.createOscillator();
+        this.collisionOscillator.connect(this.collisionGain!);
+      };
+    } catch (e) {
+      // Handle any errors with sound playback
+      this.collisionSoundActive = false;
+      console.error('Error playing collision sound:', e);
+    }
   }
 }
 
