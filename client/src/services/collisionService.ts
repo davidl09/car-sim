@@ -55,32 +55,59 @@ class CollisionService {
               responseVector.add(penetrationVector);
             }
             
-            // Only process damage if we don't have a recent collision and don't have spawn protection
-            if (!this.hasRecentCollision(player) && !hasSpawnProtection(player)) {
-              // Get the current player's speed
-              const playerSpeed = this.getPlayerSpeed(player);
-              
-              // Calculate damage based on player's speed
-              const damage = calculateDamage(playerSpeed);
+            // Process damage for both vehicles involved in collision
+            
+            // Determine if our player should take damage (no recent collision and no spawn protection)
+            const playerCanTakeDamage = !this.hasRecentCollision(player) && !hasSpawnProtection(player);
+            
+            // Determine if the other player should take damage
+            const otherPlayerCanTakeDamage = !this.hasRecentCollision(otherPlayer) && !hasSpawnProtection(otherPlayer);
+            
+            // Get speeds of both vehicles for damage calculation
+            const playerSpeed = this.getPlayerSpeed(player);
+            const otherPlayerSpeed = this.getPlayerSpeed(otherPlayer);
+            
+            // Calculate relative collision speed (average of both speeds)
+            const relativeSpeed = (playerSpeed + otherPlayerSpeed) * 0.5;
+            
+            // Calculate damage for this player based on relative speed
+            if (playerCanTakeDamage) {
+              const damage = calculateDamage(relativeSpeed);
               
               if (damage > 0) {
                 // Apply damage to the player
                 store.damagePlayer(playerId, damage);
                 
-                // Send update to server with safe health value
+                // Send update to server
                 socketService.sendPlayerUpdate({
                   health: isNaN(player.health) ? 100 - damage : player.health - damage,
                   lastCollision: Date.now()
                 });
                 
-                // Play collision sound
-                audioService.playCollisionSound();
-                
-                if (DEBUG) console.log(`Collision with vehicle ${otherPlayerId}, damage: ${damage}`);
+                if (DEBUG) console.log(`Our vehicle damaged by ${damage} in collision with ${otherPlayerId}`);
               }
-            } else {
-              // Still play collision sound even if no damage is taken
-              audioService.playCollisionSound();
+            }
+            
+            // Calculate damage for other player based on relative speed
+            if (otherPlayerCanTakeDamage) {
+              const damage = calculateDamage(relativeSpeed);
+              
+              if (damage > 0) {
+                // Apply damage to the other player
+                store.damagePlayer(otherPlayerId, damage);
+                
+                // No need to send update for other player - they'll handle their own health
+                // This is just for local rendering
+                
+                if (DEBUG) console.log(`Other vehicle ${otherPlayerId} damaged by ${damage}`);
+              }
+            }
+            
+            // Play collision sound either way
+            audioService.playCollisionSound();
+            
+            if (DEBUG && (playerCanTakeDamage || otherPlayerCanTakeDamage)) {
+              console.log(`Collision between ${playerId} and ${otherPlayerId}, relative speed: ${relativeSpeed}`);
             }
           }
         } catch (err) {

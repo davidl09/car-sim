@@ -17,7 +17,8 @@ export const COLLISION_COOLDOWN = 1000;
 export const SPAWN_PROTECTION_TIME = 10000;
 
 // Bounce-back force when vehicles collide (higher = stronger bounce)
-export const COLLISION_RESTITUTION = 0.5;
+// Increased from 0.5 to 1.0 for more pronounced bouncing effect
+export const COLLISION_RESTITUTION = 1.0;
 
 // Maximum distance for collision detection (units)
 // Reduced to be more realistic - just over 1 car length

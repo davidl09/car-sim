@@ -313,12 +313,19 @@ export function Vehicle({ controlType }: VehicleProps) {
       // Update position
       vehicleRef.current.position.add(vehicleCollisionResponse);
       
-      // Reduce vehicle speed significantly on collision - lose 80% of speed
-      const SPEED_REDUCTION_FACTOR = 0.2; // Keep only 20% of current speed
+      // Get current speed before reduction
+      const currentSpeed = velocity.current.length();
+      
+      // Reduce vehicle speed on collision - but keep more momentum (30% instead of 20%)
+      const SPEED_REDUCTION_FACTOR = 0.3; // Keep 30% of current speed
       velocity.current.multiplyScalar(SPEED_REDUCTION_FACTOR);
       
-      // Add a small bounce in the direction of the collision response - reuse vector
-      _tempVec3.copy(vehicleCollisionResponse).normalize().multiplyScalar(0.05);
+      // Bounce effect that scales with collision speed
+      // Higher speed collisions result in stronger bounce-back
+      const bounceStrength = Math.min(0.15, 0.05 + (currentSpeed * 0.1));
+      
+      // Add bounce in the direction of the collision response - reuse vector
+      _tempVec3.copy(vehicleCollisionResponse).normalize().multiplyScalar(bounceStrength);
       velocity.current.add(_tempVec3);
     }
     
