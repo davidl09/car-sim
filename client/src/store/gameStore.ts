@@ -42,6 +42,7 @@ export const useGameStore = create<GameState>((set) => ({
     
     // If player doesn't exist, create a new player entry with defaults
     if (!player) {
+      // Only log player creation, not regular updates
       console.log(`Creating new player in store with ID: ${id}`);
       return {
         players: {
@@ -62,8 +63,8 @@ export const useGameStore = create<GameState>((set) => ({
       };
     }
     
-    // If player exists, update their data
-    console.log(`Updating existing player in store with ID: ${id}`);
+    // If player exists, update their data without logging
+    // Remove console log that happens on every frame
     return {
       players: {
         ...state.players,

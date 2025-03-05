@@ -95,6 +95,12 @@ class CollisionService {
     }
   }
   
+  // Reusable vectors for tree collision detection
+  private _position = new ThreeVector3();
+  private _treePosition = new ThreeVector3();
+  private _direction = new ThreeVector3();
+  private _responseVector = new ThreeVector3();
+  
   // Check for collisions with trees
   public checkTreeCollisions(
     playerId: string, 
@@ -121,14 +127,14 @@ class CollisionService {
       // Get the current player's speed
       const playerSpeed = this.getPlayerSpeed(player);
       
-      // Create a Three.js Vector3 for calculations
-      const position = new ThreeVector3(
+      // Use reusable vector for calculations
+      this._position.set(
         playerPosition.x,
         playerPosition.y,
         playerPosition.z
       );
       
-      // For collision response
+      // For collision response - reset to null before each use
       let responseVector: ThreeVector3 | null = null;
       
       // Safety check for trees array
@@ -150,23 +156,24 @@ class CollisionService {
         // Skip if we've recently collided with this tree
         if (this.hasRecentTreeCollision(treeId)) continue;
         
-        const treePosition = new ThreeVector3(
+        // Use reusable vector for tree position
+        this._treePosition.set(
           tree.position.x,
           tree.position.y || 0,  // Default to 0 if y is undefined
           tree.position.z
         );
         
         try {
-          if (checkTreeCollision(position, treePosition)) {
-            // Calculate bounce vector
-            const direction = new ThreeVector3().subVectors(position, treePosition).normalize();
-            direction.y = 0; // Keep bounce on horizontal plane
+          if (checkTreeCollision(this._position, this._treePosition)) {
+            // Calculate bounce vector using reusable vector
+            this._direction.copy(this._position).sub(this._treePosition).normalize();
+            this._direction.y = 0; // Keep bounce on horizontal plane
             
             // Save for physics response
             if (!responseVector) {
-              responseVector = direction.clone().multiplyScalar(0.5);
+              responseVector = this._responseVector.copy(this._direction).multiplyScalar(0.5);
             } else {
-              responseVector.add(direction.multiplyScalar(0.5));
+              responseVector.add(this._direction.multiplyScalar(0.5));
             }
             
             // Only process damage if not skipping damage
@@ -187,7 +194,7 @@ class CollisionService {
                 // Record this tree collision
                 this.treeCollisionTimestamps.set(treeId, Date.now());
                 
-                if (DEBUG) console.log(`Collision with tree at ${treePosition.x}, ${treePosition.z}, damage: ${damage}`);
+                if (DEBUG) console.log(`Collision with tree at ${this._treePosition.x}, ${this._treePosition.z}, damage: ${damage}`);
               }
             }
             
@@ -234,6 +241,27 @@ class CollisionService {
     // Clean up old collision records
     this.treeCollisionTimestamps.delete(treeId);
     return false;
+  }
+  
+  // Periodically clean up old collision records to prevent memory leaks
+  // This method should be called regularly to ensure the map doesn't grow infinitely
+  public cleanupCollisionRecords(): void {
+    const now = Date.now();
+    const staleTimestamp = now - COLLISION_COOLDOWN;
+    
+    // Iterate through all entries and remove any that are older than the cooldown
+    this.treeCollisionTimestamps.forEach((timestamp, treeId) => {
+      if (timestamp < staleTimestamp) {
+        this.treeCollisionTimestamps.delete(treeId);
+      }
+    });
+    
+    // Add a size check to prevent the map from growing too large
+    if (this.treeCollisionTimestamps.size > 1000) {
+      // If we somehow have more than 1000 entries, just clear the entire map
+      console.warn(`Tree collision map grew too large (${this.treeCollisionTimestamps.size} entries), clearing it`);
+      this.treeCollisionTimestamps.clear();
+    }
   }
 }
 

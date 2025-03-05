@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useKeyboardControls } from '@react-three/drei';
 import { Vector3, Group } from 'three';
 import { socketService } from '@/services/socketService';
 import { audioService } from '@/services/audioService';
@@ -8,6 +7,7 @@ import { collisionService } from '@/services/collisionService';
 import { useGameStore } from '@/store/gameStore';
 import { Vector3 as PlayerVector3 } from 'shared/types/player';
 import { hasSpawnProtection } from '@/utils/collisionUtils';
+import { useDesktopControls, useMobileControls, defaultControlsState } from './Controls';
 
 // Extend window interface to support the tree data function
 declare global {
@@ -34,7 +34,12 @@ enum CameraView {
   FIRST_PERSON = 'first_person' // First-person from driver's perspective
 }
 
-export function Vehicle() {
+// Type for Vehicle props to differentiate between mobile and desktop
+type VehicleProps = {
+  controlType: 'mobile' | 'desktop';
+};
+
+export function Vehicle({ controlType }: VehicleProps) {
   const vehicleRef = useRef<Group>(null);
   const { camera } = useThree();
   
@@ -56,46 +61,80 @@ export function Vehicle() {
   // Track if engine is running
   const engineRunningRef = useRef<boolean>(false);
   
-  // Get keyboard controls and subscribe to camera switch
-  const [subscribeKeys, getKeys] = useKeyboardControls();
+  // Use the appropriate controls based on control type
+  // These hooks are safe because they're not conditionally called - 
+  // the controlType is fixed at component creation time
+  const mobileControls = controlType === 'mobile' ? useMobileControls() : { getControls: () => defaultControlsState };
+  const desktopControls = controlType === 'desktop' ? useDesktopControls() : { getControls: () => defaultControlsState };
   
-  // We'll handle billboard effect in the main useFrame loop instead to avoid potential conflicts
+  // Get the appropriate control getter function
+  const getControls = controlType === 'mobile' ? mobileControls.getControls : desktopControls.getControls;
   
-  // Subscribe to camera switch key
+  // Handle camera switch for desktop devices
   useEffect(() => {
-    // Handle camera view switching when 'c' is pressed
-    const unsubscribe = subscribeKeys(
-      (state) => state.cameraSwitch,
-      (pressed) => {
-        if (pressed && !cameraSwitchCooldown.current) {
-          // Switch camera view and apply cooldown to prevent rapid switching
-          cameraSwitchCooldown.current = true;
-          
-          // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
-          switch (cameraViewRef.current) {
-            case CameraView.REAR:
-              cameraViewRef.current = CameraView.FRONT;
-              break;
-            case CameraView.FRONT:
-              cameraViewRef.current = CameraView.FIRST_PERSON;
-              break;
-            case CameraView.FIRST_PERSON:
-              cameraViewRef.current = CameraView.REAR;
-              break;
-          }
-          
-          // Reset cooldown after 300ms to prevent accidental double-switches
-          setTimeout(() => {
-            cameraSwitchCooldown.current = false;
-          }, 300);
-        }
+    if (controlType !== 'desktop') return; // Skip for mobile devices
+
+    // Use keyboard events directly for desktop camera switch
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if the 'c' key was pressed
+      if (e.code === 'KeyC' && !cameraSwitchCooldown.current) {
+        switchCameraView();
       }
-    );
+    };
+    
+    // Add event listener for keyboard events
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [controlType]);
+  
+  // Helper function to switch camera view
+  const switchCameraView = () => {
+    // Switch camera view and apply cooldown to prevent rapid switching
+    cameraSwitchCooldown.current = true;
+    
+    // Cycle through camera views: REAR -> FRONT -> FIRST_PERSON -> REAR
+    switch (cameraViewRef.current) {
+      case CameraView.REAR:
+        cameraViewRef.current = CameraView.FRONT;
+        break;
+      case CameraView.FRONT:
+        cameraViewRef.current = CameraView.FIRST_PERSON;
+        break;
+      case CameraView.FIRST_PERSON:
+        cameraViewRef.current = CameraView.REAR;
+        break;
+    }
+    
+    // Reset cooldown after 300ms to prevent accidental double-switches
+    setTimeout(() => {
+      cameraSwitchCooldown.current = false;
+    }, 300);
+  };
+  
+  // Handle camera switch for mobile controls (separate from frame loop for better performance)
+  useEffect(() => {
+    if (controlType !== 'mobile') return; // Skip for desktop devices
+    
+    // Check if the current frame has a camera switch request
+    const checkCameraSwitch = () => {
+      const { cameraSwitch } = getControls();
+      
+      if (cameraSwitch && !cameraSwitchCooldown.current) {
+        switchCameraView();
+      }
+    };
+    
+    // Set up a frame check for camera switch requests
+    const intervalId = setInterval(checkCameraSwitch, 100);
     
     return () => {
-      unsubscribe();
+      clearInterval(intervalId);
     };
-  }, [subscribeKeys]);
+  }, [controlType, getControls]);
   
   // Setup engine sound management
   useEffect(() => {
@@ -114,22 +153,34 @@ export function Vehicle() {
   // Extract trees from visible chunks for collision detection
   const nearbyTrees = useRef<Array<{position: PlayerVector3}>>([]);
   
-  // Reference to track if we need to update tree data
-  //const lastPlayerChunk = useRef<{x: number, z: number}>({x: 0, z: 0});
+  // Reusable vectors to avoid memory allocations
+  const _tempVec3 = new Vector3();
+  const _tempVec3_2 = new Vector3();
+  const _tempVec3_3 = new Vector3();
+  const _cameraOffset = new Vector3();
+  const _lookAtPosition = new Vector3();
+  const _forwardDir = new Vector3();
+  const _movement = new Vector3();
+  const _targetPosition = new Vector3();
   
   // Move the vehicle based on input
-  //useFrame((state, delta) => {
   useFrame(() => {
     if (!vehicleRef.current || !playerState || !playerId) return;
     
-    // Get current input state
+    // Periodically clean up collision records to prevent memory leaks
+    // Only run this check every ~3 seconds (180 frames at 60fps)
+    if (Math.random() < 0.0055) {
+      collisionService.cleanupCollisionRecords();
+    }
+    
+    // Get current input state (from keyboard or joystick)
     const { 
       forward, 
       back, 
       left, 
       right, 
       brake
-    } = getKeys();
+    } = getControls();
     
     // Calculate speed (magnitude of velocity)
     const currentSpeed = velocity.current.length();
@@ -150,11 +201,6 @@ export function Vehicle() {
     
     // Check if vehicle is on a road
     const isOnRoad = window.isOnRoad ? window.isOnRoad(vehiclePosition) : true;
-    
-    // Uncomment for debugging:
-    // if (Math.random() < 0.01) { // Only show this occasionally to avoid spamming the console
-    //   console.log(`Vehicle at (${vehiclePosition.x.toFixed(1)},${vehiclePosition.z.toFixed(1)}) is ${isOnRoad ? 'ON' : 'OFF'} road`);
-    // }
     
     // Apply acceleration - corrected direction (forward is positive Z)
     // Apply off-road penalty if not on a road
@@ -241,25 +287,16 @@ export function Vehicle() {
       frictionFactor *= 0.998;
     }
     
-    // Debug: Uncomment to monitor top speed
-    // if (speedKmh > 190) console.log(`Speed: ${speedKmh.toFixed(1)} km/h, Friction: ${frictionFactor}`);
-    
     velocity.current.multiplyScalar(frictionFactor);
     
-    // Apply velocity to vehicle position
-    const movement = velocity.current.clone();
+    // Apply velocity to vehicle position - use reusable vector instead of creating new one
+    _movement.copy(velocity.current);
     
     // Apply rotation to movement direction
-    movement.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+    _movement.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
     
     // Update vehicle position
-    vehicleRef.current.position.add(movement);
-    
-    // Check current chunk to determine when to update tree data
-    // const currentPlayerChunk = {
-    //   x: Math.floor(vehicleRef.current.position.x / 256),
-    //   z: Math.floor(vehicleRef.current.position.z / 256)
-    // };
+    vehicleRef.current.position.add(_movement);
     
     // Check for player-vehicle collisions and get collision response vector
     const vehicleCollisionResponse = collisionService.checkVehicleCollisions(playerId);
@@ -280,9 +317,9 @@ export function Vehicle() {
       const SPEED_REDUCTION_FACTOR = 0.2; // Keep only 20% of current speed
       velocity.current.multiplyScalar(SPEED_REDUCTION_FACTOR);
       
-      // Add a small bounce in the direction of the collision response
-      const bounceVector = vehicleCollisionResponse.clone().normalize().multiplyScalar(0.05);
-      velocity.current.add(bounceVector);
+      // Add a small bounce in the direction of the collision response - reuse vector
+      _tempVec3.copy(vehicleCollisionResponse).normalize().multiplyScalar(0.05);
+      velocity.current.add(_tempVec3);
     }
     
     // Apply tree collision response
@@ -294,61 +331,62 @@ export function Vehicle() {
       const TREE_SPEED_REDUCTION_FACTOR = 0.05; // Keep only 5% of current speed
       velocity.current.multiplyScalar(TREE_SPEED_REDUCTION_FACTOR);
       
-      // Add a small bounce in the direction of the collision response
-      const bounceVector = treeCollisionResponse.clone().normalize().multiplyScalar(0.03);
-      velocity.current.add(bounceVector);
+      // Add a small bounce in the direction of the collision response - reuse vector
+      _tempVec3.copy(treeCollisionResponse).normalize().multiplyScalar(0.03);
+      velocity.current.add(_tempVec3);
     }
     
     // Update camera position based on the current view mode
-    let cameraOffset: Vector3;
-    let lookAtPosition: Vector3;
     let lerpSpeed = 0.1; // Default smooth transition speed
     
-    // Calculate camera position and target based on the view mode
+    // Calculate camera position and target based on the view mode - reuse vectors
     switch (cameraViewRef.current) {
       case CameraView.REAR: // Default third-person view from behind
-        cameraOffset = new Vector3(0, 5, -10); // Behind and above
-        lookAtPosition = vehicleRef.current.position.clone(); // Look at vehicle
+        _cameraOffset.set(0, 5, -10); // Behind and above
+        // Set lookAtPosition to vehicle position
+        _lookAtPosition.copy(vehicleRef.current.position);
         break;
         
       case CameraView.FRONT: // Third-person view from front
-        cameraOffset = new Vector3(0, 5, 10); // In front and above
-        lookAtPosition = vehicleRef.current.position.clone(); // Look at vehicle
+        _cameraOffset.set(0, 5, 10); // In front and above
+        // Set lookAtPosition to vehicle position
+        _lookAtPosition.copy(vehicleRef.current.position);
         break;
         
       case CameraView.FIRST_PERSON: // First-person driver view
         // Position at driver's eye level, slightly offset from center
-        cameraOffset = new Vector3(0.5, 2.2, 0); // Right side (driver position), eye level
+        _cameraOffset.set(0.5, 2.2, 0); // Right side (driver position), eye level
         lerpSpeed = 0.2; // Faster transition for first-person
         
         // Look in the direction the car is facing (10 units ahead)
-        const forwardDir = new Vector3(0, 1.8, 10); // Look ahead and slightly down
+        _forwardDir.set(0, 1.8, 10); // Look ahead and slightly down
         
         // Apply car's rotation to both offset and look-direction
-        cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
-        forwardDir.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+        _cameraOffset.applyAxisAngle(_tempVec3_3.set(0, 1, 0), vehicleRef.current.rotation.y);
+        _forwardDir.applyAxisAngle(_tempVec3_3.set(0, 1, 0), vehicleRef.current.rotation.y);
         
-        lookAtPosition = vehicleRef.current.position.clone().add(forwardDir);
+        // Set lookAtPosition
+        _lookAtPosition.copy(vehicleRef.current.position).add(_forwardDir);
         break;
     }
     
     // Apply the car's rotation to camera offset (except for first-person which already did this)
     if (cameraViewRef.current !== CameraView.FIRST_PERSON) {
-      cameraOffset.applyAxisAngle(new Vector3(0, 1, 0), vehicleRef.current.rotation.y);
+      _cameraOffset.applyAxisAngle(_tempVec3_2.set(0, 1, 0), vehicleRef.current.rotation.y);
     }
     
     // Apply the calculated offset to the vehicle position
-    const targetPosition = new Vector3(
-      vehicleRef.current.position.x + cameraOffset.x,
-      vehicleRef.current.position.y + cameraOffset.y,
-      vehicleRef.current.position.z + cameraOffset.z
+    _targetPosition.set(
+      vehicleRef.current.position.x + _cameraOffset.x,
+      vehicleRef.current.position.y + _cameraOffset.y,
+      vehicleRef.current.position.z + _cameraOffset.z
     );
     
     // Smoothly transition camera to target position
-    camera.position.lerp(targetPosition, lerpSpeed);
+    camera.position.lerp(_targetPosition, lerpSpeed);
     
     // Point camera at the appropriate position
-    camera.lookAt(lookAtPosition);
+    camera.lookAt(_lookAtPosition);
     
     // Send position updates to server
     const now = Date.now();
