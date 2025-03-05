@@ -194,7 +194,7 @@ class CollisionService {
                 // Record this tree collision
                 this.treeCollisionTimestamps.set(treeId, Date.now());
                 
-                if (DEBUG) console.log(`Collision with tree at ${treePosition.x}, ${treePosition.z}, damage: ${damage}`);
+                if (DEBUG) console.log(`Collision with tree at ${this._treePosition.x}, ${this._treePosition.z}, damage: ${damage}`);
               }
             }
             
