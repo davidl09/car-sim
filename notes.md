@@ -1,0 +1,1 @@
+when driving far enough away, the green 'grass' disappears. memory usage also drops from ~4.5gb to ~1gb. framerate increases from 40 to 60.
