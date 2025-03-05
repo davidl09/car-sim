@@ -142,13 +142,13 @@ export function WorldRenderer() {
   
   // Get player position for the ground to follow
   const groundPosition = useMemo(() => {
-    if (!playerPosition) return [0, -0.1, 0];
+    if (!playerPosition) return [0, -0.1, 0] as [number, number, number];
     
     return [
       Math.floor(playerPosition.x / 1000) * 1000,
       -0.1,
       Math.floor(playerPosition.z / 1000) * 1000
-    ];
+    ] as [number, number, number];
   }, [playerPosition]);
   
   return (
