@@ -140,15 +140,26 @@ export function WorldRenderer() {
     return coords;
   }, [currentChunk]);
   
+  // Get player position for the ground to follow
+  const groundPosition = useMemo(() => {
+    if (!playerPosition) return [0, -0.1, 0];
+    
+    return [
+      Math.floor(playerPosition.x / 1000) * 1000,
+      -0.1,
+      Math.floor(playerPosition.z / 1000) * 1000
+    ];
+  }, [playerPosition]);
+  
   return (
     <group>
-      {/* Ground plane */}
+      {/* Ground plane - moved to follow player in 1000-unit grid steps */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, -0.1, 0]}
+        position={groundPosition}
         receiveShadow
       >
-        <planeGeometry args={[10000, 10000]} />
+        <planeGeometry args={[20000, 20000]} />
         <meshStandardMaterial color="#8BC34A" />
       </mesh>
       
