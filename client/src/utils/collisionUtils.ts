@@ -19,8 +19,22 @@ export const SPAWN_PROTECTION_TIME = 10000;
 // Bounce-back force when vehicles collide (higher = stronger bounce)
 export const COLLISION_RESTITUTION = 0.5;
 
+// Maximum distance for collision detection (units)
+export const MAX_COLLISION_DISTANCE = 20;
+
 // Check if a collision has occurred between two vehicles
 export function checkVehicleCollision(player1: Player, player2: Player): boolean {
+  // First, perform a quick distance check to avoid unnecessary collision calculations
+  const dx = player1.position.x - player2.position.x;
+  const dz = player1.position.z - player2.position.z;
+  const distanceSquared = dx * dx + dz * dz;
+  
+  // If vehicles are further than MAX_COLLISION_DISTANCE apart, they can't collide
+  if (distanceSquared > MAX_COLLISION_DISTANCE * MAX_COLLISION_DISTANCE) {
+    return false;
+  }
+  
+  // If they're close enough, perform detailed collision check
   // Create bounding boxes for both vehicles
   const box1 = createVehicleBoundingBox(
     new Vector3(player1.position.x, player1.position.y, player1.position.z),
@@ -44,6 +58,16 @@ const _penetration = new Vector3();
 
 // Calculate the penetration vector for vehicle collision response
 export function calculatePenetrationVector(player1: Player, player2: Player): Vector3 {
+  // Quick distance check - skip calculation for distant players
+  const dx = player1.position.x - player2.position.x;
+  const dz = player1.position.z - player2.position.z;
+  const distanceSquared = dx * dx + dz * dz;
+  
+  // If vehicles are further than MAX_COLLISION_DISTANCE apart, return zero vector
+  if (distanceSquared > MAX_COLLISION_DISTANCE * MAX_COLLISION_DISTANCE) {
+    return _penetration.set(0, 0, 0);
+  }
+  
   // Get positions as Three.js Vector3 - reuse vectors
   _pos1.set(player1.position.x, player1.position.y, player1.position.z);
   _pos2.set(player2.position.x, player2.position.y, player2.position.z);
